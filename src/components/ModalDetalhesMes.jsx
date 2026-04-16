@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { X, Edit, Trash2, TrendingUp, Calendar as CalendarIcon, DollarSign, Power, Minus } from 'lucide-react';
 
 const ModalDetalhesMes = ({ 
@@ -7,11 +7,8 @@ const ModalDetalhesMes = ({
   monthKey, 
   monthName, 
   data, 
-  addEntradaExtra, 
-  editEntradaExtra, 
   removeEntradaExtra,
   toggleEntradaAtiva,
-  addDespesaExtra,
   editDespesaExtra,
   removeDespesaExtra,
   toggleDespesaExtraAtiva,
@@ -20,8 +17,6 @@ const ModalDetalhesMes = ({
   formatCurrency,
   formatDate,
   setEditingEntradaId,
-  setEditingDespesaExtraId,
-  setEditingDespesaId,
   setModalType,
   setShowMainModal
 }) => {
@@ -123,8 +118,66 @@ const ModalDetalhesMes = ({
 
   const salarioMensal = parseFloat(data.salarioMensal || 0);
   const totalEntradas = salarioMensal;
+  const totalDespesasFixas = (data.despesas || []).reduce((sum, d) => {
+    if (d.vezesRestantes === null || d.vezesRestantes === undefined) {
+      return sum + parseFloat(d.valor || 0);
+    }
+
+    const vezesRestantesInicial = parseInt(d.vezesRestantes) || 0;
+
+    if (d.dataInicio) {
+      const [inicioAno, inicioMes] = d.dataInicio.split('-').map(Number);
+      const inicioDate = new Date(inicioAno, inicioMes - 1, 1);
+
+      if (mesDate < inicioDate) {
+        return sum;
+      }
+
+      const mesesPassados =
+        (mesDate.getFullYear() - inicioDate.getFullYear()) * 12 +
+        (mesDate.getMonth() - inicioDate.getMonth());
+      const vezesRestantesAgora = vezesRestantesInicial - mesesPassados;
+
+      if (vezesRestantesAgora > 0) {
+        return sum + parseFloat(d.valor || 0);
+      }
+    } else if (vezesRestantesInicial > 0) {
+      return sum + parseFloat(d.valor || 0);
+    }
+
+    return sum;
+  }, 0) || parseFloat(data.despesasFixas || 0) + parseFloat(data.despesasVariaveis || 0);
+  const totalDespesasExtras = despesasExtrasDoMes.filter((despesa) => despesa.ativo !== false).reduce((sum, despesa) => sum + parseFloat(despesa.valor || 0), 0);
+
+  let faturaBruta = 0;
+  data.compras.forEach((compra) => {
+    if (compra.oculta) return;
+    const [year, month, day] = compra.data.split('-').map(Number);
+    const compraDay = day;
+    const compraMonth = month - 1;
+    const compraYear = year;
+    let faturaCompetenciaMonth = compraMonth;
+    let faturaCompetenciaYear = compraYear;
+
+    if (compraDay >= data.diaFechamento) {
+      faturaCompetenciaMonth += 1;
+      if (faturaCompetenciaMonth > 11) {
+        faturaCompetenciaMonth = 0;
+        faturaCompetenciaYear += 1;
+      }
+    }
+
+    const monthIndex = mesDate.getMonth();
+    const yearIndex = mesDate.getFullYear();
+    const monthsDiff = (yearIndex - faturaCompetenciaYear) * 12 + (monthIndex - faturaCompetenciaMonth);
+
+    if (monthsDiff >= 0 && monthsDiff < compra.parcelas) {
+      faturaBruta += parseFloat(compra.valorTotal) / parseFloat(compra.parcelas);
+    }
+  });
 
   const handleEdit = (entrada) => {
+    setShowModal(false);
     setEditingEntradaId(entrada.id);
     setModalType('entradaExtra');
     setShowMainModal(true);
@@ -141,248 +194,163 @@ const ModalDetalhesMes = ({
   }, [setShowModal]);
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in zoom-in-95 duration-200"
+    <div
+      className="overlay-shell"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           setShowModal(false);
         }
       }}
     >
-      <div className="bg-zinc-900/95 border border-white/10 rounded-3xl w-full max-w-5xl max-h-[90vh] shadow-2xl ring-1 ring-white/5 relative flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-8 pt-8 pb-4 border-b border-white/5 flex-shrink-0 bg-zinc-900/95">
-          <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 ring-1 ring-white/10">
+      <div className="modal-card modal-card--wide surface-enter">
+        <div className="modal-header">
+          <h2 className="modal-title flex items-center gap-3">
+            <div className="modal-icon panel-icon--accent">
               <CalendarIcon size={24} />
             </div>
             Detalhes - {monthName}
           </h2>
-          <button 
-            onClick={() => setShowModal(false)}
-            className="p-2 hover:bg-white/10 rounded-full transition text-zinc-400 hover:text-white"
-          >
+          <button onClick={() => setShowModal(false)} className="modal-close">
             <X size={20} />
           </button>
         </div>
-        
-        <div className="overflow-y-auto custom-scrollbar flex-1 px-8 pb-8 pt-6">
-          <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="glass-panel p-5 rounded-xl border border-emerald-500/10 bg-gradient-to-br from-emerald-500/5 to-transparent">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+
+        <div className="overflow-y-auto custom-scrollbar flex-1 pt-6">
+          <div className="summary-grid">
+            <div className="summary-tile summary-tile--positive">
+              <div className="panel-title-wrap mb-4">
+                <div className="panel-icon panel-icon--positive">
                   <TrendingUp size={20} />
                 </div>
-                <h3 className="text-base font-bold text-white">Entradas</h3>
+                <div>
+                  <h3 className="panel-title">Entradas</h3>
+                  <p className="panel-subtitle">Salário e extras</p>
+                </div>
               </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-sm font-medium text-zinc-300">Renda Passiva</span>
-                  <span className="text-lg font-bold text-emerald-400">{formatCurrency(salarioMensal)}</span>
+              <div className="month-panel__rows">
+                <div className="month-row">
+                  <span>Receita mensal</span>
+                  <span className="month-row__value month-row__value--positive">{formatCurrency(salarioMensal)}</span>
                 </div>
                 {totalEntradasExtras > 0 && (
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-xs text-zinc-500 italic">Extras (informativo)</span>
-                    <span className="text-sm font-semibold text-blue-400">{formatCurrency(totalEntradasExtras)}</span>
+                  <div className="month-row">
+                    <span>Extras</span>
+                    <span className="month-row__value month-row__value--accent">{formatCurrency(totalEntradasExtras)}</span>
                   </div>
                 )}
-                <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent my-3"></div>
-                <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                  <span className="text-base font-bold text-white">Total</span>
-                  <span className="text-2xl font-bold text-emerald-400">{formatCurrency(totalEntradas)}</span>
+                <div className="month-divider" />
+                <div className="month-row month-row--summary">
+                  <span>Total</span>
+                  <span className="month-row__value month-row__value--positive">{formatCurrency(totalEntradas)}</span>
                 </div>
               </div>
             </div>
 
-            <div className="glass-panel p-5 rounded-xl border border-rose-500/10 bg-gradient-to-br from-rose-500/5 to-transparent">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400">
+            <div className="summary-tile summary-tile--negative">
+              <div className="panel-title-wrap mb-4">
+                <div className="panel-icon panel-icon--negative">
                   <Minus size={20} />
                 </div>
-                <h3 className="text-base font-bold text-white">Despesas</h3>
+                <div>
+                  <h3 className="panel-title">Despesas</h3>
+                  <p className="panel-subtitle">Fixas e extras</p>
+                </div>
               </div>
-              <div className="space-y-3">
-                {(() => {
-                  const totalDespesasFixas = (data.despesas || []).reduce((sum, d) => {
-                    if (d.vezesRestantes === null || d.vezesRestantes === undefined) {
-                      return sum + parseFloat(d.valor || 0);
-                    }
-                    
-                    const vezesRestantesInicial = parseInt(d.vezesRestantes) || 0;
-                    
-                    if (d.dataInicio) {
-                      const [inicioAno, inicioMes] = d.dataInicio.split('-').map(Number);
-                      const inicioDate = new Date(inicioAno, inicioMes - 1, 1);
-                      
-                      if (mesDate < inicioDate) {
-                        return sum;
-                      }
-                      
-                      const mesesPassados = (mesDate.getFullYear() - inicioDate.getFullYear()) * 12 + 
-                                            (mesDate.getMonth() - inicioDate.getMonth());
-                      const vezesRestantesAgora = vezesRestantesInicial - mesesPassados;
-                      
-                      if (vezesRestantesAgora > 0) {
-                        return sum + parseFloat(d.valor || 0);
-                      }
-                    } else {
-                      if (vezesRestantesInicial > 0) {
-                        return sum + parseFloat(d.valor || 0);
-                      }
-                    }
-                    
-                    return sum;
-                  }, 0) || parseFloat(data.despesasFixas || 0) + parseFloat(data.despesasVariaveis || 0);
-                  
-                  const totalDespesasExtras = despesasExtrasDoMes.filter(d => d.ativo !== false).reduce((sum, d) => sum + parseFloat(d.valor || 0), 0);
-                  
-                  return (
-                    <>
-                      {totalDespesasExtras > 0 && (
-                        <div className="flex justify-between items-center py-1">
-                          <span className="text-xs text-zinc-500 italic">Extras (informativo)</span>
-                          <span className="text-sm font-semibold text-rose-400/70">
-                            {formatCurrency(totalDespesasExtras)}
-                          </span>
-                        </div>
-                      )}
-                      <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent my-3"></div>
-                      <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                        <span className="text-base font-bold text-white">Total</span>
-                        <span className="text-2xl font-bold text-rose-400">
-                          {formatCurrency(totalDespesasFixas)}
-                        </span>
-                      </div>
-                    </>
-                  );
-                })()}
+              <div className="month-panel__rows">
+                {totalDespesasExtras > 0 && (
+                  <div className="month-row">
+                    <span>Extras</span>
+                    <span className="month-row__value month-row__value--negative">{formatCurrency(totalDespesasExtras)}</span>
+                  </div>
+                )}
+                <div className="month-divider" />
+                <div className="month-row month-row--summary">
+                  <span>Total</span>
+                  <span className="month-row__value month-row__value--negative">{formatCurrency(totalDespesasFixas)}</span>
+                </div>
               </div>
             </div>
 
-            <div className="glass-panel p-5 rounded-xl border border-purple-500/10 bg-gradient-to-br from-purple-500/5 to-transparent">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400">
+            <div className="summary-tile summary-tile--accent">
+              <div className="panel-title-wrap mb-4">
+                <div className="panel-icon panel-icon--accent">
                   <TrendingUp size={20} />
                 </div>
-                <h3 className="text-base font-bold text-white">Fatura Cartão</h3>
+                <div>
+                  <h3 className="panel-title">Fatura do cartão</h3>
+                  <p className="panel-subtitle">Parcelas e abatimentos</p>
+                </div>
               </div>
-              <div className="space-y-2.5">
-                {(() => {
-                  let faturaBruta = 0;
-                  data.compras.forEach(compra => {
-                    if (compra.oculta) return;
-                    const [year, month, day] = compra.data.split('-').map(Number);
-                    const compraDay = day;
-                    const compraMonth = month - 1;
-                    const compraYear = year;
-                    let faturaCompetenciaMonth = compraMonth;
-                    let faturaCompetenciaYear = compraYear;
-                    if (compraDay >= data.diaFechamento) {
-                      faturaCompetenciaMonth += 1;
-                      if (faturaCompetenciaMonth > 11) {
-                        faturaCompetenciaMonth = 0;
-                        faturaCompetenciaYear += 1;
-                      }
-                    }
-                    const monthIndex = mesDate.getMonth();
-                    const yearIndex = mesDate.getFullYear();
-                    const monthsDiff = (yearIndex - faturaCompetenciaYear) * 12 + (monthIndex - faturaCompetenciaMonth);
-                    if (monthsDiff >= 0 && monthsDiff < compra.parcelas) {
-                      faturaBruta += parseFloat(compra.valorTotal) / parseFloat(compra.parcelas);
-                    }
-                  });
-                  
-                  return (
-                    <>
-                      <div className="flex justify-between items-center py-1">
-                        <span className="text-sm font-medium text-zinc-300">Parcelas</span>
-                        <span className="text-lg font-bold text-purple-400">
-                          {formatCurrency(faturaBruta)}
-                        </span>
-                      </div>
-                      {totalEstornos > 0 && (
-                        <div className="flex justify-between items-center py-1">
-                          <span className="text-sm font-medium text-zinc-300">Estornos</span>
-                          <span className="text-base font-bold text-emerald-400">-{formatCurrency(totalEstornos)}</span>
-                        </div>
-                      )}
-                      <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent my-3"></div>
-                      <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                        <span className="text-base font-bold text-white">Total</span>
-                        <span className="text-2xl font-bold text-purple-400">
-                          {formatCurrency(Math.max(0, faturaCartao))}
-                        </span>
-                      </div>
-                    </>
-                  );
-                })()}
+              <div className="month-panel__rows">
+                <div className="month-row">
+                  <span>Parcelas</span>
+                  <span className="month-row__value month-row__value--accent">{formatCurrency(faturaBruta)}</span>
+                </div>
+                {totalEstornos > 0 && (
+                  <div className="month-row">
+                    <span>Estornos</span>
+                    <span className="month-row__value month-row__value--positive">-{formatCurrency(totalEstornos)}</span>
+                  </div>
+                )}
+                <div className="month-divider" />
+                <div className="month-row month-row--summary">
+                  <span>Total</span>
+                  <span className="month-row__value month-row__value--accent">{formatCurrency(Math.max(0, faturaCartao))}</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <DollarSign size={20} className="text-emerald-400" />
-                  Entradas Extras
-                </h3>
+          <div className="detail-columns">
+            <section className="detail-section">
+              <div className="section-header">
+                <div>
+                  <span className="panel-kicker">Entradas extras</span>
+                  <h3 className="panel-title">Entradas do mês</h3>
+                </div>
               </div>
-              
+
               {entradasDoMes.length === 0 ? (
-                <div className="glass-panel text-center py-12 text-zinc-500 rounded-xl">
-                  <DollarSign size={48} className="mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">Nenhuma entrada extra registrada para este mês.</p>
+                <div className="detail-empty">
+                  <DollarSign size={42} className="empty-state__icon" />
+                  <p>Nenhuma entrada extra neste mês.</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {entradasDoMes.map(entrada => {
+                <div className="detail-list custom-scrollbar">
+                  <div className="list-stack">
+                    {entradasDoMes.map((entrada) => {
                     const isMesOriginal = entrada.mes === monthKey;
                     const [entradaAno, entradaMesNum] = entrada.mes.split('-').map(Number);
                     const entradaMesNome = new Date(entradaAno, entradaMesNum - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
                     
                     return (
-                      <div 
-                        key={`${entrada.id}-${monthKey}`} 
-                        className={`glass-panel p-5 rounded-xl flex items-start justify-between group border transition-all ${
-                          entrada.ativo === false ? 'opacity-50 border-zinc-700' : 'border-white/10 hover:border-emerald-500/30 bg-white/5'
-                        }`}
-                      >
-                        <div className="flex-1 min-w-0 pr-4">
-                          <div className="flex items-start gap-2.5 mb-3 flex-wrap">
-                            <h4 className={`text-base font-semibold leading-tight ${entrada.ativo === false ? 'text-zinc-500 line-through' : 'text-white'}`}>
+                      <div key={`${entrada.id}-${monthKey}`} className={`detail-item ${entrada.ativo === false ? 'detail-item--muted' : ''}`}>
+                        <div className="detail-item__main">
+                          <div className="flex flex-wrap items-start gap-2 mb-3">
+                            <h4 className={`detail-item__title ${entrada.ativo === false ? 'ledger-row__title--muted' : ''}`}>
                               {entrada.nome}
                             </h4>
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex flex-wrap gap-2">
                               {entrada.recorrente && (
-                                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm">
-                                  RECORRENTE
-                                </span>
+                                <span className="pill pill--accent">Recorrente</span>
                               )}
                               {entrada.recorrente && !isMesOriginal && (
-                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm">
-                                  Desde {entradaMesNome}
-                                </span>
+                                <span className="pill pill--muted">Desde {entradaMesNome}</span>
                               )}
                               {entrada.ativo === false && (
-                                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-zinc-500/20 text-zinc-400 border border-zinc-500/40">
-                                  DESATIVADA
-                                </span>
+                                <span className="pill pill--negative">Desativada</span>
                               )}
                             </div>
                           </div>
-                          <div className="flex flex-col gap-1.5">
-                            <div className="flex items-center gap-3">
-                              <span className="text-lg font-bold text-emerald-400">{formatCurrency(entrada.valor)}</span>
+                          <div className="ledger-row__meta flex flex-wrap items-center gap-3">
+                              <span className="detail-item__value month-row__value--positive">{formatCurrency(entrada.valor)}</span>
                               {entrada.data && (
-                                <span className="text-sm text-zinc-400 font-medium">• {formatDate(entrada.data)}</span>
+                                <span className="pill pill--muted">{formatDate(entrada.data)}</span>
                               )}
-                            </div>
-                            {entrada.recorrente && !isMesOriginal && (
-                              <span className="text-xs text-zinc-500 font-medium">Mês original: {entradaMesNome}</span>
-                            )}
+                              {entrada.recorrente && !isMesOriginal && <span>Mês original: {entradaMesNome}</span>}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        <div className="detail-actions">
                           {(!entrada.recorrente || isMesOriginal) ? (
                             <>
                               <button
@@ -390,11 +358,7 @@ const ModalDetalhesMes = ({
                                   e.stopPropagation();
                                   toggleEntradaAtiva(entrada.id);
                                 }}
-                                className={`p-2.5 rounded-lg transition-all ${
-                                  entrada.ativo === false 
-                                    ? 'text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/20 border border-transparent hover:border-emerald-500/30' 
-                                    : 'text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800/80 border border-transparent hover:border-white/10'
-                                }`}
+                                className={`row-icon-button ${entrada.ativo === false ? 'row-icon-button--positive' : 'row-icon-button--neutral'}`}
                                 title={entrada.ativo === false ? "Ativar entrada" : "Desativar entrada"}
                               >
                                 <Power size={18} />
@@ -404,7 +368,7 @@ const ModalDetalhesMes = ({
                                   e.stopPropagation();
                                   handleEdit(entrada);
                                 }}
-                                className="p-2.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-blue-500/20 transition-all border border-transparent hover:border-blue-500/30" 
+                                className="row-icon-button row-icon-button--accent"
                                 title="Editar"
                               >
                                 <Edit size={18} />
@@ -414,33 +378,34 @@ const ModalDetalhesMes = ({
                                   e.stopPropagation();
                                   removeEntradaExtra(entrada.id);
                                 }}
-                                className="p-2.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/20 transition-all border border-transparent hover:border-rose-500/30" 
+                                className="row-icon-button row-icon-button--negative"
                                 title="Remover"
                               >
                                 <Trash2 size={18} />
                               </button>
                             </>
                           ) : (
-                            <span className="text-xs text-zinc-500 italic px-3 py-2 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
+                            <span className="pill pill--muted">
                               Edite no mês original
                             </span>
                           )}
                         </div>
                       </div>
                     );
-                  })}
+                    })}
+                  </div>
                 </div>
               )}
-            </div>
+            </section>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Minus size={20} className="text-rose-400" />
-                  Despesas
-                </h3>
+            <section className="detail-section">
+              <div className="section-header">
+                <div>
+                  <span className="panel-kicker">Saídas do mês</span>
+                  <h3 className="panel-title">Despesas do mês</h3>
+                </div>
               </div>
-              
+
               {(() => {
                 const todasDespesas = [
                   ...despesasFixasDoMes.map(d => ({ ...d, tipo: 'fixa' })),
@@ -449,16 +414,17 @@ const ModalDetalhesMes = ({
                 
                 if (todasDespesas.length === 0) {
                   return (
-                    <div className="glass-panel text-center py-12 text-zinc-500 rounded-xl">
-                      <Minus size={48} className="mx-auto mb-3 opacity-20" />
-                      <p className="text-sm">Nenhuma despesa registrada para este mês.</p>
+                    <div className="detail-empty">
+                      <Minus size={42} className="empty-state__icon" />
+                      <p>Nenhuma despesa neste mês.</p>
                     </div>
                   );
                 }
                 
                 return (
-                  <div className="space-y-2">
-                    {todasDespesas.map(despesa => {
+                  <div className="detail-list custom-scrollbar">
+                    <div className="list-stack">
+                      {todasDespesas.map(despesa => {
                       const isExtra = despesa.tipo === 'extra';
                       const temLimite = despesa.vezesRestantes !== undefined && despesa.vezesRestantes !== null;
                       
@@ -482,47 +448,36 @@ const ModalDetalhesMes = ({
                       }
                       
                       return (
-                        <div 
-                          key={`${despesa.tipo}-${despesa.id}`} 
-                          className={`glass-panel p-5 rounded-xl flex items-start justify-between group border transition-all ${
-                            (isExtra && despesa.ativo === false) ? 'opacity-50 border-zinc-700' : 'border-white/10 hover:border-rose-500/30 bg-white/5'
-                          }`}
-                        >
-                          <div className="flex-1 min-w-0 pr-4">
-                            <div className="flex items-center gap-2 mb-3 flex-wrap">
-                              <h4 className={`text-base font-semibold leading-tight ${(isExtra && despesa.ativo === false) ? 'text-zinc-500 line-through' : 'text-white'}`}>
+                        <div key={`${despesa.tipo}-${despesa.id}`} className={`detail-item ${(isExtra && despesa.ativo === false) ? 'detail-item--muted' : ''}`}>
+                          <div className="detail-item__main">
+                            <div className="flex flex-wrap items-center gap-2 mb-3">
+                              <h4 className={`detail-item__title ${(isExtra && despesa.ativo === false) ? 'ledger-row__title--muted' : ''}`}>
                                 {despesa.nome}
                               </h4>
                               {!isExtra && temLimite && vezesRestantesAgora !== null && vezesRestantesAgora > 0 && (
-                                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 whitespace-nowrap">
-                                  Falta {vezesRestantesAgora}x
-                                </span>
+                                <span className="pill pill--accent">Falta {vezesRestantesAgora}x</span>
                               )}
                               {isExtra && despesa.ativo === false && (
-                                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-zinc-500/20 text-zinc-400 border border-zinc-500/40">
-                                  DESATIVADA
-                                </span>
+                                <span className="pill pill--negative">Desativada</span>
                               )}
                               {!isExtra && (
-                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
-                                  FIXA
-                                </span>
+                                <span className="pill pill--muted">Fixa</span>
                               )}
                             </div>
-                            <div className="flex items-center gap-3 flex-wrap">
-                              <span className="text-lg font-bold text-rose-400">{formatCurrency(despesa.valor)}</span>
+                            <div className="ledger-row__meta flex flex-wrap items-center gap-3">
+                              <span className="detail-item__value month-row__value--negative">{formatCurrency(despesa.valor)}</span>
                               {isExtra && despesa.data && (
-                                <span className="text-sm text-zinc-400 font-medium">• {formatDate(despesa.data)}</span>
+                                <span className="pill pill--muted">{formatDate(despesa.data)}</span>
                               )}
                               {!isExtra && temLimite && despesa.dataInicio && (
-                                <span className="text-sm text-zinc-400 font-medium">• Início: {formatDate(despesa.dataInicio)}</span>
+                                <span className="pill pill--muted">Início {formatDate(despesa.dataInicio)}</span>
                               )}
                               {!isExtra && (
-                                <span className="text-sm text-zinc-400 font-medium">• /mês</span>
+                                <span>/mês</span>
                               )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                          <div className="detail-actions">
                             {isExtra ? (
                               <>
                                 <button
@@ -530,11 +485,7 @@ const ModalDetalhesMes = ({
                                     e.stopPropagation();
                                     toggleDespesaExtraAtiva(despesa.id);
                                   }}
-                                  className={`p-2.5 rounded-lg transition-all ${
-                                    despesa.ativo === false 
-                                      ? 'text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/20 border border-transparent hover:border-emerald-500/30' 
-                                      : 'text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800/80 border border-transparent hover:border-white/10'
-                                  }`}
+                                  className={`row-icon-button ${despesa.ativo === false ? 'row-icon-button--positive' : 'row-icon-button--neutral'}`}
                                   title={despesa.ativo === false ? "Ativar despesa" : "Desativar despesa"}
                                 >
                                   <Power size={18} />
@@ -542,9 +493,10 @@ const ModalDetalhesMes = ({
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    setShowModal(false);
                                     editDespesaExtra(despesa);
                                   }}
-                                  className="p-2.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-blue-500/20 transition-all border border-transparent hover:border-blue-500/30" 
+                                  className="row-icon-button row-icon-button--accent"
                                   title="Editar"
                                 >
                                   <Edit size={18} />
@@ -554,7 +506,7 @@ const ModalDetalhesMes = ({
                                     e.stopPropagation();
                                     removeDespesaExtra(despesa.id);
                                   }}
-                                  className="p-2.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/20 transition-all border border-transparent hover:border-rose-500/30" 
+                                  className="row-icon-button row-icon-button--negative"
                                   title="Remover"
                                 >
                                   <Trash2 size={18} />
@@ -565,9 +517,10 @@ const ModalDetalhesMes = ({
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    setShowModal(false);
                                     editDespesa(despesa);
                                   }}
-                                  className="p-2.5 rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-blue-500/20 transition-all border border-transparent hover:border-blue-500/30" 
+                                  className="row-icon-button row-icon-button--accent"
                                   title="Editar"
                                 >
                                   <Edit size={18} />
@@ -577,7 +530,7 @@ const ModalDetalhesMes = ({
                                     e.stopPropagation();
                                     removeDespesa(despesa.id);
                                   }}
-                                  className="p-2.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/20 transition-all border border-transparent hover:border-rose-500/30" 
+                                  className="row-icon-button row-icon-button--negative"
                                   title="Remover"
                                 >
                                   <Trash2 size={18} />
@@ -588,10 +541,11 @@ const ModalDetalhesMes = ({
                         </div>
                       );
                     })}
+                    </div>
                   </div>
                 );
               })()}
-            </div>
+            </section>
           </div>
         </div>
       </div>
@@ -600,4 +554,3 @@ const ModalDetalhesMes = ({
 };
 
 export default ModalDetalhesMes;
-

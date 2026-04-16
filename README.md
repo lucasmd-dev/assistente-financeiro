@@ -1,40 +1,57 @@
 # Assistente Financeiro
 
-Aplicação web para planejamento financeiro pessoal com projeção de 12 meses, gestão de compras parceladas, estornos e conselheiro IA.
+Aplicação web para planejamento financeiro pessoal com foco em clareza operacional. O projeto reúne saldo atual, despesas recorrentes, compras parceladas, estornos, lançamentos extras e projeção de caixa para os próximos 12 meses em uma interface única.
 
-## Funcionalidades
+## Visão geral
 
-- **Controle Financeiro**: Saldo atual, renda passiva e despesas fixas
-- **Projeção**: Cálculo automático de 12 meses com saldo acumulado
-- **Parcelados**: Gestão de compras parceladas no cartão de crédito
-- **Estornos**: Registro de estornos que reduzem automaticamente a fatura do mês
-- **Despesas**: Cadastro com suporte a limite de vezes e data de início
-- **Entradas/Despesas Extras**: Registro por mês (informativo)
-- **Conselheiro IA**: Análise financeira usando Google Gemini API
-- **Backup**: Exportação e importação de dados (API key não inclui credenciais)
-- **Relatórios**: Geração de relatórios textuais em TXT
+A proposta deste projeto é resolver um problema cotidiano: entender, de forma rápida, como decisões do presente afetam o orçamento dos meses seguintes. Em vez de depender de planilhas, a aplicação centraliza as regras financeiras no front-end e mantém os dados persistidos localmente no navegador.
 
-## Tecnologias
+## Funcionalidades principais
+
+- Cadastro do saldo atual e da receita mensal.
+- Projeção financeira de 12 meses com saldo acumulado.
+- Controle de compras parceladas considerando dia de fechamento do cartão.
+- Registro de estornos, com impacto automático na fatura do mês.
+- Cadastro de despesas recorrentes com início programado e limite de recorrência.
+- Lançamento de entradas e despesas extras por mês.
+- Visão detalhada de cada mês, com resumo de entradas, despesas e fatura.
+- Backup em JSON e geração de relatório em TXT.
+
+## Regras de negócio implementadas
+
+- Compras parceladas entram na competência correta de acordo com o dia de fechamento do cartão.
+- Estornos reduzem o valor da fatura do mês correspondente.
+- Despesas recorrentes podem ser permanentes ou limitadas por quantidade de meses.
+- Entradas e despesas extras podem ser ativadas ou desativadas sem perda do histórico.
+- Meses já marcados como recebidos não duplicam a receita na projeção.
+
+## Stack
 
 - React 18
 - Vite
 - Tailwind CSS
-- Lucide React (ícones)
-- Google Gemini API
+- lucide-react
+- localStorage para persistência
+- Integração opcional com Google Gemini API
 
-## Instalação
+## Estrutura
+
+- `src/App.jsx`: concentra o fluxo principal, a projeção financeira e a orquestração dos modais.
+- `src/components/Modal.jsx`: formulários de cadastro e edição.
+- `src/components/ModalDetalhesMes.jsx`: detalhamento mensal da projeção.
+- `src/components/ChatInterface.jsx`: análise financeira assistida com contexto do planejamento atual.
+- `src/components/Calendar.jsx`: seletor de data customizado.
+
+## Como executar localmente
+
+Pré-requisito recomendado: Node.js 18 ou superior.
 
 ```bash
 npm install
-```
-
-## Desenvolvimento
-
-```bash
 npm run dev
 ```
 
-Acesse `http://localhost:5173`
+Abra `http://localhost:5173` no navegador.
 
 ## Build
 
@@ -42,16 +59,12 @@ Acesse `http://localhost:5173`
 npm run build
 ```
 
-## Deploy
+## Demonstração
 
-Configurado para Vercel. O arquivo `vercel.json` já está configurado.
+Projeto publicado em: [assistente-financeiro-pi.vercel.app](https://assistente-financeiro-pi.vercel.app/)
 
-## Configuração
+## Observações sobre persistência e integração
 
-1. API Key do Google Gemini: configure nas configurações da aplicação (quando disponível)
-2. Dados salvos localmente no navegador (localStorage)
-3. Migração automática de dados antigos
-
-## Teste
-
-Aplicação disponível em: **[https://assistente-financeiro-pi.vercel.app/](https://assistente-financeiro-pi.vercel.app/)**
+- Os dados da aplicação ficam salvos no `localStorage` do navegador.
+- A chave da API é armazenada localmente e não entra no arquivo exportado de backup.
+- O projeto funciona sem a integração externa; a análise financeira é um recurso opcional.

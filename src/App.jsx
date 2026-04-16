@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   CreditCard, 
   Calendar, 
@@ -12,8 +12,6 @@ import {
   Download,
   Upload,
   Save,
-  Settings,
-  X,
   AlertTriangle,
   CheckCircle2,
   Circle,
@@ -23,6 +21,7 @@ import {
 import Modal from './components/Modal';
 import ChatInterface from './components/ChatInterface';
 import ModalDetalhesMes from './components/ModalDetalhesMes';
+import { formatCurrencyInput, parseCurrencyInput } from './utils/currency';
 
 export default function FinancialPlanner() {
   const getInitialState = () => {
@@ -96,10 +95,15 @@ export default function FinancialPlanner() {
         } else if (!parsed.chatAtivoId) {
           parsed.chatAtivoId = parsed.chats[0].id;
         }
+
+        parsed.limiteAlertaMensal =
+          parsed.limiteAlertaMensal !== undefined && parsed.limiteAlertaMensal !== null
+            ? parseFloat(parsed.limiteAlertaMensal) || 0
+            : 500;
         
         return parsed;
       }
-    } catch (error) {}
+    } catch {}
     
     const chatInicial = {
       id: `chat-${Date.now()}`,
@@ -120,6 +124,7 @@ export default function FinancialPlanner() {
       entradasExtras: [],
       despesas: [],
       despesasExtras: [],
+      limiteAlertaMensal: 500,
       apiKey: '',
       chats: [chatInicial],
       chatAtivoId: chatInicial.id,
@@ -135,22 +140,34 @@ export default function FinancialPlanner() {
   const [editingDespesaId, setEditingDespesaId] = useState(null);
   const [editingDespesaExtraId, setEditingDespesaExtraId] = useState(null);
   const [mesDetalhado, setMesDetalhado] = useState(null);
+  const [mesFormulario, setMesFormulario] = useState(null);
   const [editingEntradaId, setEditingEntradaId] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [editandoLimiteAlerta, setEditandoLimiteAlerta] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ show: false, message: '', onConfirm: null, type: 'confirm' });
   const [hideValues, setHideValues] = useState(() => {
     return localStorage.getItem('assistenteFinanceiroHideValues') === 'true';
   });
 
   useEffect(() => {
-    localStorage.setItem('assistenteFinanceiroHideValues', hideValues);
+    localStorage.setItem('assistenteFinanceiroHideValues', String(hideValues));
   }, [hideValues]);
 
   useEffect(() => {
     try {
       localStorage.setItem('assistenteFinanceiroData', JSON.stringify(data));
-    } catch (error) {}
+    } catch {}
   }, [data]);
+
+  useEffect(() => {
+    if (!showModal || modalType !== 'analise') {
+      setShowApiKeyModal(false);
+    }
+  }, [showModal, modalType]);
+
+  const openApiKeyModal = () => {
+    setShowApiKeyModal(true);
+  };
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -198,6 +215,10 @@ export default function FinancialPlanner() {
         despesas: Array.isArray(data.despesas) ? data.despesas : [],
         despesasExtras: Array.isArray(data.despesasExtras) ? data.despesasExtras : [],
         salariosRecebidos: Array.isArray(data.salariosRecebidos) ? data.salariosRecebidos : [],
+        limiteAlertaMensal:
+          data.limiteAlertaMensal !== undefined && data.limiteAlertaMensal !== null
+            ? parseFloat(data.limiteAlertaMensal) || 0
+            : 500,
         apiKey: '',
         chats: Array.isArray(data.chats) ? data.chats : [],
         chatAtivoId: data.chatAtivoId || null
@@ -221,7 +242,8 @@ export default function FinancialPlanner() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (error) {
-      showAlert(`Erro ao exportar backup: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Erro inesperado ao gerar o arquivo.';
+      showAlert(`Erro ao exportar backup: ${errorMessage}`);
     }
   };
 
@@ -238,6 +260,10 @@ export default function FinancialPlanner() {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
+        if (typeof e.target?.result !== 'string') {
+          throw new Error('Conteúdo do arquivo em formato inválido.');
+        }
+
         const backup = JSON.parse(e.target.result);
         
         if (!backup || typeof backup !== 'object') {
@@ -259,6 +285,10 @@ export default function FinancialPlanner() {
         restoredData.diaFechamento = parseInt(restoredData.diaFechamento) || 1;
         restoredData.despesasFixas = parseFloat(restoredData.despesasFixas) || 0;
         restoredData.despesasVariaveis = parseFloat(restoredData.despesasVariaveis) || 0;
+        restoredData.limiteAlertaMensal =
+          restoredData.limiteAlertaMensal !== undefined && restoredData.limiteAlertaMensal !== null
+            ? parseFloat(restoredData.limiteAlertaMensal) || 0
+            : 500;
         
         if (!Array.isArray(restoredData.compras)) restoredData.compras = [];
         if (!Array.isArray(restoredData.estornos)) restoredData.estornos = [];
@@ -273,7 +303,7 @@ export default function FinancialPlanner() {
           return idCounter;
         };
         
-        restoredData.compras = restoredData.compras.map((c, idx) => ({
+        restoredData.compras = restoredData.compras.map(c => ({
           id: c.id || generateUniqueId(),
           item: c.item || 'Item sem nome',
           data: c.data || new Date().toISOString().split('T')[0],
@@ -282,14 +312,14 @@ export default function FinancialPlanner() {
           oculta: c.oculta === true
         }));
         
-        restoredData.estornos = restoredData.estornos.map((e, idx) => ({
+        restoredData.estornos = restoredData.estornos.map(e => ({
           id: e.id || generateUniqueId(),
           nome: e.nome || 'Estorno sem nome',
           mes: e.mes || new Date().toISOString().slice(0, 7),
           valor: parseFloat(e.valor) || 0
         }));
         
-        restoredData.despesas = restoredData.despesas.map((d, idx) => ({
+        restoredData.despesas = restoredData.despesas.map(d => ({
           id: d.id || generateUniqueId(),
           nome: d.nome || 'Despesa sem nome',
           valor: parseFloat(d.valor) || 0,
@@ -298,7 +328,7 @@ export default function FinancialPlanner() {
           temLimite: d.temLimite === true || (d.vezesRestantes !== undefined && d.vezesRestantes !== null)
         }));
         
-        restoredData.despesasExtras = restoredData.despesasExtras.map((d, idx) => ({
+        restoredData.despesasExtras = restoredData.despesasExtras.map(d => ({
           id: d.id || generateUniqueId(),
           nome: d.nome || 'Despesa extra sem nome',
           valor: parseFloat(d.valor) || 0,
@@ -307,7 +337,7 @@ export default function FinancialPlanner() {
           ativo: d.ativo !== undefined ? d.ativo !== false : true
         }));
         
-        restoredData.entradasExtras = restoredData.entradasExtras.map((e, idx) => ({
+        restoredData.entradasExtras = restoredData.entradasExtras.map(e => ({
           id: e.id || generateUniqueId(),
           nome: e.nome || 'Entrada extra sem nome',
           valor: parseFloat(e.valor) || 0,
@@ -373,6 +403,7 @@ export default function FinancialPlanner() {
           despesas: restoredData.despesas,
           despesasExtras: restoredData.despesasExtras,
           salariosRecebidos: restoredData.salariosRecebidos,
+          limiteAlertaMensal: restoredData.limiteAlertaMensal,
           apiKey: restoredData.apiKey,
           chats: restoredData.chats,
           chatAtivoId: restoredData.chatAtivoId
@@ -389,7 +420,8 @@ export default function FinancialPlanner() {
         });
       } catch (error) {
         console.error('Erro ao restaurar backup:', error);
-        showAlert(`Erro ao restaurar backup: ${error.message}\n\nVerifique se o arquivo é um backup válido e tente novamente.`);
+        const errorMessage = error instanceof Error ? error.message : 'Não foi possível interpretar o arquivo informado.';
+        showAlert(`Erro ao restaurar backup: ${errorMessage}\n\nVerifique se o arquivo é um backup válido e tente novamente.`);
       } finally {
         event.target.value = '';
       }
@@ -411,7 +443,7 @@ export default function FinancialPlanner() {
     report += 'INFORMAÇÕES BÁSICAS\n';
     report += '-'.repeat(70) + '\n';
     report += `Saldo Atual: ${formatCurrency(parseFloat(data.saldoAtual) || 0)}\n`;
-    report += `Renda Passiva Mensal: ${formatCurrency(parseFloat(data.salarioMensal) || 0)}\n`;
+    report += `Receita Mensal: ${formatCurrency(parseFloat(data.salarioMensal) || 0)}\n`;
     
     const hoje = new Date();
     const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
@@ -442,7 +474,7 @@ export default function FinancialPlanner() {
     report += `Dia de Fechamento do Cartão: ${data.diaFechamento}\n`;
     
     if (data.salariosRecebidos && data.salariosRecebidos.length > 0) {
-      report += `\nSalários Já Recebidos (${data.salariosRecebidos.length}):\n`;
+      report += `\nMeses com Receita Já Lançada (${data.salariosRecebidos.length}):\n`;
       data.salariosRecebidos.sort().forEach(mes => {
         const [ano, mesNum] = mes.split('-').map(Number);
         const dataMes = new Date(ano, mesNum - 1, 1);
@@ -458,7 +490,7 @@ export default function FinancialPlanner() {
     if (timeline.length === 0) {
       report += 'Nenhuma projeção disponível.\n';
     } else {
-      timeline.forEach((month, idx) => {
+      timeline.forEach(month => {
         report += `\n${month.name}:\n`;
         report += `  Entradas: ${formatCurrency(month.income)}\n`;
         report += `  Fatura do Cartão: ${formatCurrency(month.cardBill)}\n`;
@@ -466,7 +498,7 @@ export default function FinancialPlanner() {
         report += `  Sobra Mensal: ${formatCurrency(month.netResult)}\n`;
         report += `  Saldo Acumulado: ${formatCurrency(month.finalBalance)}\n`;
         if (month.salarioJaRecebido) {
-          report += `  [Salário já recebido - mês excluído da projeção]\n`;
+          report += `  [Receita já lançada - mês excluído da projeção]\n`;
         }
       });
     }
@@ -814,12 +846,7 @@ export default function FinancialPlanner() {
       }));
     }
     setShowModal(false);
-  };
-
-  const editEntradaExtra = (entrada) => {
-    setEditingEntradaId(entrada.id);
-    setModalType('entradaExtra');
-    setShowModal(true);
+    setMesFormulario(null);
   };
 
   const removeEntradaExtra = (id) => {
@@ -853,7 +880,7 @@ export default function FinancialPlanner() {
       }));
     }
     setShowModal(false);
-    setMesDetalhado(null);
+    setMesFormulario(null);
   };
 
   const editDespesaExtra = (despesaExtra) => {
@@ -893,10 +920,24 @@ export default function FinancialPlanner() {
         despesasVariaveis: 0,
         compras: [],
         estornos: [],
+        entradasExtras: [],
+        despesas: [],
+        despesasExtras: [],
+        salariosRecebidos: [],
+        limiteAlertaMensal: 500,
         apiKey: data.apiKey || '',
         chats: [chatInicial],
         chatAtivoId: chatInicial.id,
       });
+      setShowModal(false);
+      setShowApiKeyModal(false);
+      setMesDetalhado(null);
+      setMesFormulario(null);
+      setEditingCompraId(null);
+      setEditingEstornoId(null);
+      setEditingDespesaId(null);
+      setEditingDespesaExtraId(null);
+      setEditingEntradaId(null);
       setConfirmModal({ show: false, message: '', onConfirm: null, type: 'confirm' });
     });
   };
@@ -1057,7 +1098,6 @@ export default function FinancialPlanner() {
       let faturaMonth = month - 1;
       let faturaYear = year;
       
-      // Ajuste inicial do fechamento
       if (day >= parseInt(data.diaFechamento)) {
         faturaMonth++;
         if (faturaMonth > 11) {
@@ -1083,52 +1123,89 @@ export default function FinancialPlanner() {
   };
 
   const timeline = calculateTimeline();
+  const limiteAlertaMensal =
+    data.limiteAlertaMensal !== undefined && data.limiteAlertaMensal !== null
+      ? parseFloat(data.limiteAlertaMensal) || 0
+      : 500;
 
   const isMesAtencao = (month) => {
-    return month.netResult < 0 || month.finalBalance < 0 || month.netResult < 500;
+    return month.netResult < 0 || month.finalBalance < 0 || month.netResult < limiteAlertaMensal;
   };
 
+  const mesAtual = new Date();
+  const inicioMesAtual = new Date(mesAtual.getFullYear(), mesAtual.getMonth(), 1);
+  const comprasAtivas = data.compras.filter((compra) => shouldShowCompra(compra));
+  const estornosPendentes = data.estornos.filter((estorno) => !data.salariosRecebidos?.includes(estorno.mes));
+  const despesasAtivas = (data.despesas || []).filter((despesa) => {
+    if (despesa.vezesRestantes === null || despesa.vezesRestantes === undefined) {
+      return true;
+    }
+
+    const vezesRestantesInicial = parseInt(despesa.vezesRestantes) || 0;
+
+    if (despesa.dataInicio) {
+      const [inicioAno, inicioMes] = despesa.dataInicio.split('-').map(Number);
+      const inicioDate = new Date(inicioAno, inicioMes - 1, 1);
+
+      if (inicioMesAtual < inicioDate) {
+        return true;
+      }
+
+      const mesesPassados =
+        (inicioMesAtual.getFullYear() - inicioDate.getFullYear()) * 12 +
+        (inicioMesAtual.getMonth() - inicioDate.getMonth());
+
+      return vezesRestantesInicial - mesesPassados > 0;
+    }
+
+    return vezesRestantesInicial > 0;
+  });
+
+  const totalDespesasAtivas =
+    despesasAtivas.reduce((sum, despesa) => sum + parseFloat(despesa.valor || 0), 0) ||
+    parseFloat(data.despesasFixas || 0) + parseFloat(data.despesasVariaveis || 0);
+  const mediaSobra = timeline.length > 0 ? timeline.reduce((sum, month) => sum + month.netResult, 0) / timeline.length : 0;
+  const primeiroMesCritico = timeline.find((month) => isMesAtencao(month));
+  const mesesSobControle = timeline.filter((month) => !isMesAtencao(month)).length;
+  const mesAtualLabel = mesAtual.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
   return (
-    <div className="min-h-screen text-zinc-100 font-sans selection:bg-indigo-500/30 pb-20">
+    <div className="app-shell">
       {confirmModal.show && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4 animate-in fade-in zoom-in-95 duration-200"
+        <div
+          className="overlay-shell"
           onClick={(e) => {
             if (e.target === e.currentTarget && confirmModal.type === 'alert') {
               setConfirmModal({ show: false, message: '', onConfirm: null, type: 'alert' });
             }
           }}
         >
-          <div className="bg-zinc-900/90 border border-white/10 p-6 rounded-2xl w-full max-w-md shadow-2xl ring-1 ring-white/10">
-            <div className="flex items-start gap-4 mb-4">
+          <div className="dialog-card surface-enter">
+            <div className="modal-header">
               {confirmModal.type === 'alert' ? (
-                <div className="bg-amber-500/20 p-3 rounded-full ring-1 ring-amber-500/30">
-                  <AlertTriangle size={24} className="text-amber-400" />
+                <div className="dialog-icon dialog-icon--alert">
+                  <AlertTriangle size={24} />
                 </div>
               ) : (
-                <div className="bg-indigo-500/20 p-3 rounded-full ring-1 ring-indigo-500/30">
-                  <AlertTriangle size={24} className="text-indigo-400" />
+                <div className="dialog-icon dialog-icon--confirm">
+                  <AlertTriangle size={24} />
                 </div>
               )}
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-white mb-2">
-                  {confirmModal.type === 'alert' ? 'Atenção' : 'Confirmar ação'}
-                </h3>
-                <p className="text-zinc-300 whitespace-pre-line leading-relaxed">
-                  {confirmModal.message}
-                </p>
+              <div className="dialog-copy">
+                <h3 className="dialog-title">{confirmModal.type === 'alert' ? 'Atenção' : 'Confirmar ação'}</h3>
+                <p className="dialog-message whitespace-pre-line">{confirmModal.message}</p>
               </div>
             </div>
-            <div className="flex gap-3 mt-6">
+            <div className="dialog-actions">
               {confirmModal.type === 'confirm' && (
-                <button 
+                <button
                   onClick={() => setConfirmModal({ show: false, message: '', onConfirm: null, type: 'confirm' })}
-                  className="flex-1 p-3 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 text-zinc-300 border border-white/5 hover:border-white/10 transition-all font-medium"
+                  className="button-secondary"
                 >
                   Cancelar
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => {
                   if (confirmModal.onConfirm) {
                     confirmModal.onConfirm();
@@ -1136,11 +1213,7 @@ export default function FinancialPlanner() {
                     setConfirmModal({ show: false, message: '', onConfirm: null, type: confirmModal.type });
                   }
                 }}
-                className={`flex-1 p-3 rounded-xl text-white font-semibold transition-all shadow-lg ${
-                  confirmModal.type === 'alert' 
-                    ? 'bg-indigo-600 hover:bg-indigo-500 hover:shadow-indigo-500/20' 
-                    : 'bg-rose-600 hover:bg-rose-500 hover:shadow-rose-500/20'
-                }`}
+                className={confirmModal.type === 'alert' ? 'button-primary button-primary--accent' : 'button-primary button-primary--negative'}
               >
                 {confirmModal.type === 'alert' ? 'OK' : 'Confirmar'}
               </button>
@@ -1149,18 +1222,18 @@ export default function FinancialPlanner() {
         </div>
       )}
 
-      {modalType === 'ai' && (
+      {modalType === 'analise' && (
         <ChatInterface
           data={data}
           setData={setData}
           showModal={showModal}
           setShowModal={setShowModal}
-          aiLoading={aiLoading}
-          setAiLoading={setAiLoading}
+          apiKeyModalOpen={showApiKeyModal}
+          openApiKeyModal={openApiKeyModal}
           formatCurrency={formatCurrency}
           timeline={timeline}
-          comprasVisiveis={data.compras.filter(c => !c.oculta && shouldShowCompra(c))}
-          estornosVisiveis={data.estornos.filter(e => !data.salariosRecebidos.includes(e.mes))}
+          comprasVisiveis={comprasAtivas.filter((compra) => !compra.oculta)}
+          estornosVisiveis={estornosPendentes}
         />
       )}
 
@@ -1168,13 +1241,10 @@ export default function FinancialPlanner() {
         showModal={mesDetalhado !== null}
         setShowModal={(show) => !show && setMesDetalhado(null)}
         monthKey={mesDetalhado}
-        monthName={mesDetalhado ? timeline.find(m => m.monthKey === mesDetalhado)?.name || '' : ''}
+        monthName={mesDetalhado ? timeline.find((month) => month.monthKey === mesDetalhado)?.name || '' : ''}
         data={data}
-        addEntradaExtra={addEntradaExtra}
-        editEntradaExtra={editEntradaExtra}
         removeEntradaExtra={removeEntradaExtra}
         toggleEntradaAtiva={toggleEntradaAtiva}
-        addDespesaExtra={addDespesaExtra}
         editDespesaExtra={editDespesaExtra}
         removeDespesaExtra={removeDespesaExtra}
         toggleDespesaExtraAtiva={toggleDespesaExtraAtiva}
@@ -1183,18 +1253,25 @@ export default function FinancialPlanner() {
         formatCurrency={formatCurrency}
         formatDate={formatDate}
         setEditingEntradaId={setEditingEntradaId}
-        setEditingDespesaExtraId={setEditingDespesaExtraId}
-        setEditingDespesaId={setEditingDespesaId}
         setModalType={setModalType}
         setShowMainModal={setShowModal}
       />
 
       <Modal
-        showModal={showModal && modalType !== 'ai' && modalType !== 'detalhesMes'}
+        showModal={showApiKeyModal}
+        setShowModal={setShowApiKeyModal}
+        modalType="apikey"
+        setData={setData}
+        data={data}
+        modalZIndexClass="z-[80]"
+      />
+
+      <Modal
+        showModal={showModal && modalType !== 'analise' && modalType !== 'detalhesMes' && modalType !== 'apikey'}
         setShowModal={(show) => {
           setShowModal(show);
           if (!show && (modalType === 'entradaExtra' || modalType === 'despesaExtra')) {
-            setMesDetalhado(null);
+            setMesFormulario(null);
           }
         }}
         modalType={modalType}
@@ -1209,651 +1286,693 @@ export default function FinancialPlanner() {
         editingDespesaId={editingDespesaId}
         editingDespesaExtraId={editingDespesaExtraId}
         editingEntradaId={editingEntradaId}
-        compraParaEditar={editingCompraId ? data.compras.find(c => c.id === editingCompraId) : null}
-        estornoParaEditar={editingEstornoId ? data.estornos.find(e => e.id === editingEstornoId) : null}
-        despesaParaEditar={editingDespesaId ? (data.despesas || []).find(d => d.id === editingDespesaId) : null}
-        despesaExtraParaEditar={editingDespesaExtraId ? (data.despesasExtras || []).find(d => d.id === editingDespesaExtraId) : null}
-        entradaParaEditar={editingEntradaId ? data.entradasExtras?.find(e => e.id === editingEntradaId) : null}
+        compraParaEditar={editingCompraId ? data.compras.find((compra) => compra.id === editingCompraId) : null}
+        estornoParaEditar={editingEstornoId ? data.estornos.find((estorno) => estorno.id === editingEstornoId) : null}
+        despesaParaEditar={editingDespesaId ? (data.despesas || []).find((despesa) => despesa.id === editingDespesaId) : null}
+        despesaExtraParaEditar={editingDespesaExtraId ? (data.despesasExtras || []).find((despesa) => despesa.id === editingDespesaExtraId) : null}
+        entradaParaEditar={editingEntradaId ? data.entradasExtras?.find((entrada) => entrada.id === editingEntradaId) : null}
         setEditingCompraId={setEditingCompraId}
         setEditingEstornoId={setEditingEstornoId}
         setEditingDespesaId={setEditingDespesaId}
         setEditingDespesaExtraId={setEditingDespesaExtraId}
         setEditingEntradaId={setEditingEntradaId}
         data={data}
-        mesParaEntrada={mesDetalhado}
+        mesParaEntrada={mesFormulario}
+        modalZIndexClass="z-[70]"
       />
-      
-      <header className="bg-zinc-950/70 backdrop-blur-md border-b border-white/5 sticky top-0 z-40 supports-[backdrop-filter]:bg-zinc-950/50">
-        <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-2.5 rounded-xl shadow-lg shadow-indigo-500/20">
-              <LayoutDashboard size={22} className="text-white" />
+
+      <header className="site-header">
+        <div className="header-inner">
+          <div className="brand-lockup">
+            <div className="brand-mark">
+              <LayoutDashboard size={22} />
             </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent hidden sm:block tracking-tight">
-              Assistente Financeiro
-            </h1>
+            <div className="brand-copy">
+              <span className="brand-overline">Assistente financeiro</span>
+              <h1 className="brand-name">Fluxo mensal</h1>
+              <span className="brand-caption">Planejamento de caixa em 12 meses</span>
+            </div>
           </div>
-          
-          <div className="flex gap-3 items-center">
-             <button 
-                onClick={() => setHideValues(!hideValues)} 
-                className={`p-2.5 rounded-xl transition-colors border ${hideValues ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'hover:bg-white/5 text-zinc-400 hover:text-zinc-100 border-transparent hover:border-white/5'}`} 
-                title={hideValues ? "Mostrar valores" : "Ocultar valores"}
-             >
-                 {hideValues ? <EyeOff size={20} /> : <Eye size={20} />}
-             </button>
-             
-             <button onClick={() => { setEditingCompraId(null); setModalType('compra'); setShowModal(true); }} 
-                 className="flex items-center gap-2 bg-white text-zinc-950 hover:bg-zinc-200 px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-white/5">
-                 <Plus size={18} strokeWidth={2.5} /> 
-                 <span className="hidden sm:inline">Parcelar</span>
-             </button>
-             
-             <button onClick={() => { setEditingEstornoId(null); setModalType('estorno'); setShowModal(true); }} 
-                 className="flex items-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 px-4 py-2.5 rounded-xl text-sm font-medium transition-all border border-emerald-500/20">
-                 <Plus size={18} /> 
-                 <span className="hidden sm:inline">Estorno</span>
-             </button>
-              
-             <button onClick={() => { setEditingDespesaId(null); setModalType('despesa'); setShowModal(true); }} 
-                 className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 px-4 py-2.5 rounded-xl text-sm font-medium transition-all border border-rose-500/20">
-                 <Plus size={18} /> 
-                 <span className="hidden sm:inline">Despesa</span>
-             </button>
 
-             <div className="h-6 w-px bg-white/10 mx-1 hidden sm:block"></div>
+          <div className="header-context" aria-label="Contexto do planejamento">
+            <div className="header-context__item">
+              <span>Agora</span>
+              <strong>{mesAtualLabel}</strong>
+            </div>
+            <div className={`header-context__status ${primeiroMesCritico ? 'header-context__status--warn' : 'header-context__status--ok'}`}>
+              {primeiroMesCritico ? 'atenção' : 'em dia'}
+            </div>
+          </div>
 
-             <button onClick={exportBackup} className="p-2.5 hover:bg-blue-500/10 text-zinc-400 hover:text-blue-400 rounded-xl transition border border-transparent hover:border-blue-500/20" title="Exportar Backup">
-                <Save size={20} />
-             </button>
-             <label className="p-2.5 hover:bg-purple-500/10 text-zinc-400 hover:text-purple-400 rounded-xl transition border border-transparent hover:border-purple-500/20 cursor-pointer" title="Importar Backup">
-                <Upload size={20} />
-                <input 
-                  type="file" 
-                  accept=".json" 
-                  onChange={importBackup} 
-                  className="hidden" 
-                />
-             </label>
-             <button onClick={generateReport} className="p-2.5 hover:bg-emerald-500/10 text-zinc-400 hover:text-emerald-400 rounded-xl transition border border-transparent hover:border-emerald-500/20" title="Exportar Relatório">
-                <Download size={20} />
-             </button>
-             <button onClick={clearAll} className="p-2.5 hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400 rounded-xl transition border border-transparent hover:border-rose-500/20" title="Limpar Tudo">
-                <Trash2 size={20} />
-             </button>
+          <div className="header-tools" aria-label="Ações do planejamento">
+            <button
+              onClick={() => setHideValues(!hideValues)}
+              className={`header-action header-action--visibility ${hideValues ? 'is-active' : ''}`}
+              title={hideValues ? 'Mostrar valores' : 'Ocultar valores'}
+            >
+              {hideValues ? <EyeOff size={18} /> : <Eye size={18} />}
+              <span>{hideValues ? 'Mostrar' : 'Ocultar'}</span>
+            </button>
+
+            <div className="header-action-group">
+              <button onClick={exportBackup} className="header-action" title="Exportar backup">
+                <Save size={17} />
+                <span>Salvar</span>
+              </button>
+              <label className="header-action cursor-pointer" title="Importar backup">
+                <Upload size={17} />
+                <span>Importar</span>
+                <input type="file" accept=".json" onChange={importBackup} className="hidden" />
+              </label>
+              <button onClick={generateReport} className="header-action" title="Exportar relatório">
+                <Download size={17} />
+                <span>Relatório</span>
+              </button>
+              <button onClick={clearAll} className="header-action header-action--danger" title="Limpar tudo">
+                <Trash2 size={17} />
+                <span>Limpar</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 space-y-10 animate-fade-in">
-        
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-            <div className="glass-panel p-5 rounded-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-blue-500/20"></div>
-                <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1 block">Saldo Atual</label>
-                <div className="flex items-center gap-1 relative">
-                    <span className="text-white text-3xl font-bold">R$</span>
-                    <input 
-                      type={hideValues ? "password" : "number"} 
-                      step="0.01" 
-                      className="bg-transparent text-3xl font-bold text-white w-full focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-zinc-700" 
-                      value={data.saldoAtual} 
-                      onChange={e => setData({...data, saldoAtual: e.target.value})} 
-                    />
-                </div>
+      <main className="dashboard-shell animate-fade-in">
+        <section className="command-stage stagger-item">
+          <div className="panel panel--hero">
+            <div className="section-header">
+              <div>
+                <span className="panel-kicker">Base do mês</span>
+                <h2 className="section-title">Resumo do mês</h2>
+                <p className="section-description">Saldo, receita, despesas ativas e corte do cartão.</p>
+              </div>
+              <div className="section-badges">
+                <span className="info-chip info-chip--accent">{mesAtualLabel}</span>
+                <span className="info-chip info-chip--positive">{comprasAtivas.length} parcelados</span>
+                <span className="info-chip info-chip--negative">{estornosPendentes.length} estornos</span>
+              </div>
             </div>
 
-            <div className="glass-panel p-5 rounded-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-emerald-500/20"></div>
-                <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1 block">Renda Passiva</label>
-                <div className="flex items-center gap-1 relative">
-                    <span className="text-emerald-400 text-3xl font-bold">R$</span>
-                    <input 
-                      type={hideValues ? "password" : "number"} 
-                      step="0.01" 
-                      className="bg-transparent text-3xl font-bold text-emerald-400 w-full focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-zinc-700" 
-                      value={data.salarioMensal} 
-                      onChange={e => setData({...data, salarioMensal: e.target.value})} 
-                    />
-                </div>
-            </div>
+            <div className="hero-grid">
+              <div className="hero-copy">
+                <h3 className="hero-title">Visão rápida</h3>
+                <p className="hero-description">Bater o olho, lançar o que mudou e seguir.</p>
+              </div>
 
-             <div className="glass-panel p-5 rounded-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-rose-500/20"></div>
-                <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1 block">Despesas Fixas</label>
-                <div className="flex items-center gap-1 relative">
-                    <span className="text-rose-400 text-3xl font-bold">R$</span>
-                    <div className="bg-transparent text-3xl font-bold text-rose-400 w-full">
-                      {hideValues ? '••••' : Math.round((data.despesas || []).reduce((sum, d) => {
-                        if (d.vezesRestantes === null || d.vezesRestantes === undefined) {
-                          return sum + parseFloat(d.valor || 0);
-                        }
-                        
-                        const vezesRestantesInicial = parseInt(d.vezesRestantes) || 0;
-                        const hoje = new Date();
-                        const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-                        
-                        if (d.dataInicio) {
-                          const [inicioAno, inicioMes] = d.dataInicio.split('-').map(Number);
-                          const inicioDate = new Date(inicioAno, inicioMes - 1, 1);
-                          
-                          if (mesAtual < inicioDate) {
-                            return sum;
-                          }
-                          
-                          const mesesPassados = (mesAtual.getFullYear() - inicioDate.getFullYear()) * 12 + 
-                                                (mesAtual.getMonth() - inicioDate.getMonth());
-                          const vezesRestantesAgora = vezesRestantesInicial - mesesPassados;
-                          
-                          if (vezesRestantesAgora > 0) {
-                            return sum + parseFloat(d.valor || 0);
-                          }
-                        } else {
-                          if (vezesRestantesInicial > 0) {
-                            return sum + parseFloat(d.valor || 0);
-                          }
-                        }
-                        
-                        return sum;
-                      }, 0) || parseFloat(data.despesasFixas || 0) + parseFloat(data.despesasVariaveis || 0))}
-                    </div>
-                </div>
-            </div>
-
-            <div className="glass-panel p-5 rounded-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-violet-500/20"></div>
-                <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1 block">Fechamento Cartão de Crédito</label>
-                <div className="flex items-center gap-3 relative">
-                    <div className="p-2 rounded-lg bg-zinc-800/50 text-indigo-400">
-                      <Calendar size={20} />
-                    </div>
-                    <input 
-                      type="number" 
-                      min="1" 
-                      max="31" 
-                      className="bg-transparent text-3xl font-bold text-white w-full focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-zinc-700" 
-                      value={data.diaFechamento} 
-                      onChange={e => setData({...data, diaFechamento: e.target.value})} 
-                    />
-                </div>
-            </div>
-        </div>
-
-        <section>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-indigo-400">
-                    <TrendingUp size={24} /> 
+              <div className="quick-actions">
+                <button
+                  onClick={() => {
+                    setEditingCompraId(null);
+                    setModalType('compra');
+                    setShowModal(true);
+                  }}
+                  className="quick-action quick-action--primary"
+                >
+                  <div className="quick-action__copy">
+                    <span className="quick-action__title">Parcelado</span>
+                    <span className="quick-action__text">Compra no cartão</span>
                   </div>
-                  Projeção Financeira
-              </h2>
-              <span className="text-sm text-zinc-500 font-medium bg-zinc-900/50 px-3 py-1 rounded-full border border-white/5">
-                Próximos 12 meses
+                  <Plus size={18} strokeWidth={2.5} />
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingEstornoId(null);
+                    setModalType('estorno');
+                    setShowModal(true);
+                  }}
+                  className="quick-action quick-action--positive"
+                >
+                  <div className="quick-action__copy">
+                    <span className="quick-action__title">Estorno</span>
+                    <span className="quick-action__text">Crédito previsto</span>
+                  </div>
+                  <Plus size={18} />
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingDespesaId(null);
+                    setModalType('despesa');
+                    setShowModal(true);
+                  }}
+                  className="quick-action quick-action--negative"
+                >
+                  <div className="quick-action__copy">
+                    <span className="quick-action__title">Despesa</span>
+                    <span className="quick-action__text">Fixa ou pontual</span>
+                  </div>
+                  <Minus size={18} />
+                </button>
+                <button
+                  onClick={() => {
+                    setModalType('analise');
+                    setShowModal(true);
+                  }}
+                  className="quick-action quick-action--ghost"
+                >
+                  <div className="quick-action__copy">
+                    <span className="quick-action__title">Análise</span>
+                    <span className="quick-action__text">Consultar cenário</span>
+                  </div>
+                  <Sparkles size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="metric-board">
+              <label className="metric-panel metric-panel--accent">
+                <span className="metric-panel__label">Saldo atual</span>
+                <div className="metric-input-row">
+                  <input
+                    type={hideValues ? 'password' : 'text'}
+                    inputMode="decimal"
+                    className="metric-input"
+                    value={hideValues ? data.saldoAtual : formatCurrencyInput(data.saldoAtual)}
+                    onChange={(e) => setData({ ...data, saldoAtual: parseCurrencyInput(e.target.value) })}
+                    placeholder="R$ 0,00"
+                  />
+                </div>
+                <span className="metric-panel__hint">Disponível agora.</span>
+              </label>
+
+              <label className="metric-panel metric-panel--positive">
+                <span className="metric-panel__label">Receita mensal</span>
+                <div className="metric-input-row">
+                  <input
+                    type={hideValues ? 'password' : 'text'}
+                    inputMode="decimal"
+                    className="metric-input metric-input--salary"
+                    value={hideValues ? data.salarioMensal : formatCurrencyInput(data.salarioMensal)}
+                    onChange={(e) => setData({ ...data, salarioMensal: parseCurrencyInput(e.target.value) })}
+                    placeholder="R$ 0,00"
+                  />
+                </div>
+                <span className="metric-panel__hint">Base recorrente.</span>
+              </label>
+
+              <div className="metric-panel metric-panel--negative">
+                <span className="metric-panel__label">Despesas fixas ativas</span>
+                <div className="metric-input-row">
+                  <div className="metric-static metric-static--negative">{hideValues ? '••••••' : formatCurrency(totalDespesasAtivas)}</div>
+                </div>
+                <span className="metric-panel__hint">Impacto mensal atual.</span>
+              </div>
+
+              <label className="metric-panel">
+                <span className="metric-panel__label">Fechamento do cartão</span>
+                <div className="metric-input-row">
+                  <div className="panel-icon panel-icon--accent">
+                    <Calendar size={18} />
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    className="metric-input metric-input--accent"
+                    value={data.diaFechamento}
+                    onChange={(e) => setData({ ...data, diaFechamento: e.target.value })}
+                  />
+                </div>
+                <span className="metric-panel__hint">Dia que vira a fatura.</span>
+              </label>
+            </div>
+          </div>
+
+          <aside className="panel panel--support">
+            <div>
+              <span className="panel-kicker">Radar</span>
+              <h3 className="panel-title">Resumo</h3>
+            </div>
+
+            <div className="support-stack">
+              <div className="support-row">
+                <span className="support-row__label">Primeiro mês crítico</span>
+                <strong className="support-row__value">{primeiroMesCritico ? primeiroMesCritico.name : 'Nenhum em alerta'}</strong>
+              </div>
+              <div className="support-row">
+                <span className="support-row__label">Média de sobra</span>
+                <strong className="support-row__value">{formatDisplay(mediaSobra)}</strong>
+              </div>
+              <div className="support-row">
+                <span className="support-row__label">Meses sob controle</span>
+                <strong className="support-row__value">{mesesSobControle}/{timeline.length}</strong>
+              </div>
+              <div className="support-row support-row--editable">
+                <span className="support-row__label">Alerta de sobra</span>
+                <div className="support-edit">
+                  {editandoLimiteAlerta ? (
+                    <input
+                      className="field-input support-edit__input"
+                      type="text"
+                      inputMode="decimal"
+                      value={formatCurrencyInput(data.limiteAlertaMensal)}
+                      onChange={(e) => setData({ ...data, limiteAlertaMensal: parseCurrencyInput(e.target.value) })}
+                      onBlur={() => setEditandoLimiteAlerta(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === 'Escape') {
+                          setEditandoLimiteAlerta(false);
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <strong className="support-row__value">{formatDisplay(limiteAlertaMensal)}</strong>
+                  )}
+                  <button
+                    type="button"
+                    className="row-icon-button row-icon-button--accent support-edit__button"
+                    onClick={() => setEditandoLimiteAlerta(true)}
+                    title="Alterar limite de alerta mensal"
+                  >
+                    <Edit size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="support-row">
+                <span className="support-row__label">Despesas ativas</span>
+                <strong className="support-row__value">{despesasAtivas.length}</strong>
+              </div>
+            </div>
+
+            <p className="support-note">Meses com sobra abaixo de {formatDisplay(limiteAlertaMensal)} entram em atenção.</p>
+          </aside>
+        </section>
+
+        <section className="section-shell stagger-item">
+          <div className="section-header">
+            <div>
+              <span className="panel-kicker">Projeção</span>
+              <h2 className="section-title">12 meses</h2>
+              <p className="section-description">Abra um mês para ver os itens e lançar extras no lugar certo.</p>
+            </div>
+            <div className="section-badges">
+              <span className="info-chip">12 meses</span>
+              <span className="info-chip info-chip--accent">média {formatDisplay(mediaSobra)}</span>
+              <span className={`info-chip ${primeiroMesCritico ? 'info-chip--negative' : 'info-chip--positive'}`}>
+                {primeiroMesCritico ? 'atenção' : 'ok'}
               </span>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                {timeline.map((month, idx) => {
-                  const handleMarcarSalarioRecebido = () => {
-                    if (month.salarioJaRecebido) return;
-                    
-                    setData(prev => {
-                      const novosSalariosRecebidos = [...(prev.salariosRecebidos || []), month.monthKey];
-                      const novoSaldoAtual = parseFloat(prev.saldoAtual) + parseFloat(prev.salarioMensal);
-                      
-                      return {
-                        ...prev,
-                        salariosRecebidos: novosSalariosRecebidos,
-                        saldoAtual: novoSaldoAtual
-                      };
-                    });
+          </div>
+
+          <div className="projection-grid">
+            {timeline.map((month, idx) => {
+              const handleMarcarSalarioRecebido = () => {
+                if (month.salarioJaRecebido) return;
+
+                setData((prev) => {
+                  const novosSalariosRecebidos = [...(prev.salariosRecebidos || []), month.monthKey];
+                  const novoSaldoAtual = parseFloat(prev.saldoAtual) + parseFloat(prev.salarioMensal);
+
+                  return {
+                    ...prev,
+                    salariosRecebidos: novosSalariosRecebidos,
+                    saldoAtual: novoSaldoAtual
                   };
-                  
-                  return (
-                    <div 
-                      key={idx} 
-                      className={`
-                        glass-card p-6 rounded-2xl relative overflow-hidden group cursor-pointer
-                        ${isMesAtencao(month) 
-                          ? 'bg-rose-950/5 border-rose-500/20 hover:border-rose-500/40 hover:bg-rose-950/10' 
-                          : 'border-white/5 hover:border-emerald-500/30'
-                        }
-                      `}
-                      style={{ animationDelay: `${idx * 50}ms` }}
-                      onClick={() => setMesDetalhado(month.monthKey)}
+                });
+              };
+
+              const [mesNome, anoNome] = month.name.split(' de ');
+
+              return (
+                <article
+                  key={month.monthKey}
+                  className={`month-panel stagger-item ${isMesAtencao(month) ? 'month-panel--warn' : 'month-panel--steady'}`}
+                  style={{ animationDelay: `${120 + idx * 45}ms` }}
+                  onClick={() => setMesDetalhado(month.monthKey)}
+                >
+                  <div className="month-panel__header">
+                    <div>
+                      <div className="month-panel__index">{String(idx + 1).padStart(2, '0')}</div>
+                      <h3 className="month-panel__title">{mesNome}</h3>
+                      <span className="month-panel__year">{anoNome}</span>
+                    </div>
+                    <div className="month-panel__status">
+                      <span className={isMesAtencao(month) ? 'status-dot status-dot--warn' : 'status-dot status-dot--steady'} />
+                      <span className={`pill ${isMesAtencao(month) ? 'pill--negative' : 'pill--positive'}`}>
+                        {isMesAtencao(month) ? 'atenção' : 'ok'}
+                      </span>
+                      <div className="month-actions">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingEntradaId(null);
+                            setMesFormulario(month.monthKey);
+                            setModalType('entradaExtra');
+                            setShowModal(true);
+                          }}
+                          className="mini-action mini-action--positive"
+                          title="Adicionar entrada extra"
+                        >
+                          <Plus size={15} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingDespesaExtraId(null);
+                            setMesFormulario(month.monthKey);
+                            setModalType('despesaExtra');
+                            setShowModal(true);
+                          }}
+                          className="mini-action mini-action--negative"
+                          title="Adicionar despesa extra"
+                        >
+                          <Minus size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="month-panel__rows">
+                    <div className="month-row">
+                      <span>Entradas</span>
+                      <span className="month-row__value month-row__value--positive">+{formatDisplay(month.income)}</span>
+                    </div>
+                    <div className="month-row">
+                      <span>Fatura do cartão</span>
+                      <span className="month-row__value month-row__value--negative">-{formatDisplay(month.cardBill)}</span>
+                    </div>
+                    <div className="month-row">
+                      <span>Despesas</span>
+                      <span className="month-row__value month-row__value--negative">-{formatDisplay(month.expenses)}</span>
+                    </div>
+
+                    <div className="month-divider" />
+
+                    <div className="month-row month-row--summary">
+                      <span>Sobra</span>
+                      <span className={`month-row__value ${isMesAtencao(month) ? 'month-row__value--negative' : 'month-row__value--accent'} text-glow`}>
+                        {formatDisplay(month.netResult)}
+                      </span>
+                    </div>
+                    <div className="month-row month-row--foot">
+                      <span>Acumulado</span>
+                      <span className={`month-row__value ${month.finalBalance >= 0 ? 'month-row__value--positive' : 'month-row__value--negative'}`}>
+                        {formatDisplay(month.finalBalance)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {idx === 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleMarcarSalarioRecebido();
+                      }}
+                      disabled={month.salarioJaRecebido}
+                      className={`salary-flag ${month.salarioJaRecebido ? 'salary-flag--done' : 'salary-flag--pending'}`}
                     >
-                        <div className="flex justify-between items-start mb-6">
-                            <div>
-                              <h3 className="font-bold text-lg text-white mb-1">{month.name.split(' de ')[0]}</h3>
-                              <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider">{month.name.split(' de ')[1]}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {isMesAtencao(month) ? 
-                                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]">ATENÇÃO</span> : 
-                                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]">OK</span>
-                                }
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingEntradaId(null);
-                                    setModalType('entradaExtra');
-                                    setShowModal(true);
-                                    setMesDetalhado(month.monthKey);
-                                  }}
-                                  className="p-1.5 bg-indigo-600/80 hover:bg-indigo-500 text-white rounded-lg transition shadow-lg shadow-indigo-900/20 hover:shadow-indigo-500/30 z-10"
-                                  title="Adicionar entrada extra"
-                                >
-                                  <Plus size={14} />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingDespesaExtraId(null);
-                                    setModalType('despesaExtra');
-                                    setShowModal(true);
-                                    setMesDetalhado(month.monthKey);
-                                  }}
-                                  className="p-1.5 bg-rose-600/80 hover:bg-rose-500 text-white rounded-lg transition shadow-lg shadow-rose-900/20 hover:shadow-rose-500/30 z-10"
-                                  title="Adicionar despesa extra"
-                                >
-                                  <Minus size={14} />
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div className="space-y-3 text-sm">
-                            <div className="flex justify-between text-zinc-400 group-hover:text-zinc-300 transition-colors">
-                                <span>Entradas</span>
-                                <span className="text-emerald-400 font-medium">+{formatDisplay(month.income)}</span>
-                            </div>
-                            <div className="flex justify-between text-zinc-400 group-hover:text-zinc-300 transition-colors">
-                                <span>Fatura Cartão</span>
-                                <span className="text-rose-400 font-medium">-{formatDisplay(month.cardBill)}</span>
-                            </div>
-                            <div className="flex justify-between text-zinc-400 group-hover:text-zinc-300 transition-colors">
-                                <span>Despesas</span>
-                                <span className="text-rose-400 font-medium">-{formatDisplay(month.expenses)}</span>
-                            </div>
-                            
-                            <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-3"></div>
-                            
-                            <div className="flex justify-between font-bold text-base items-end">
-                                <span className="text-zinc-300">Sobra</span>
-                                <span className={`${isMesAtencao(month) ? 'text-rose-500 text-lg' : 'text-indigo-400 text-lg'} text-glow`}>
-                                    {formatDisplay(month.netResult)}
-                                </span>
-                            </div>
-                            <div className="flex justify-between text-xs pt-1">
-                                <span className="text-zinc-600">Acumulado</span>
-                                <span className={`font-medium ${month.finalBalance >= 0 ? 'text-emerald-500/80' : 'text-rose-500/80'}`}>
-                                    {formatDisplay(month.finalBalance)}
-                                </span>
-                            </div>
-                            
-                            {idx === 0 && (
-                              <div className="pt-4 mt-2">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleMarcarSalarioRecebido();
-                                    }}
-                                    disabled={month.salarioJaRecebido}
-                                    className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                                      month.salarioJaRecebido
-                                        ? 'bg-emerald-500/10 text-emerald-500/70 cursor-not-allowed border border-emerald-500/10'
-                                        : 'bg-white/5 hover:bg-indigo-600 text-zinc-300 hover:text-white border border-white/10 hover:border-indigo-500 hover:shadow-lg hover:shadow-indigo-500/20'
-                                    }`}
-                                  >
-                                    {month.salarioJaRecebido ? (
-                                      <>
-                                        <CheckCircle2 size={16} />
-                                        <span>Renda Recebida</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Circle size={16} />
-                                        <span>Marcar Renda Recebida</span>
-                                      </>
-                                    )}
-                                  </button>
-                              </div>
-                            )}
-                        </div>
-                    </div>
-                  );
-                })}
-            </div>
+                      {month.salarioJaRecebido ? (
+                        <>
+                          <CheckCircle2 size={16} />
+                          <span>Renda recebida</span>
+                        </>
+                      ) : (
+                        <>
+                          <Circle size={16} />
+                          <span>Marcar renda recebida</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </article>
+              );
+            })}
+          </div>
         </section>
 
-        <section>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="glass-panel rounded-2xl overflow-hidden flex flex-col">
-                    <div className="flex items-center justify-between p-5 border-b border-white/5 bg-white/[0.02]">
-                        <h3 className="text-lg font-bold text-white flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400">
-                              <CreditCard size={20} />
-                            </div>
-                            Parcelados
-                        </h3>
-                        <button
-                            onClick={() => {
-                                setEditingCompraId(null);
-                                setModalType('compra');
-                                setShowModal(true);
-                            }}
-                            className="p-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white transition shadow-lg shadow-purple-900/20"
-                            title="Adicionar Parcelado"
-                        >
-                            <Plus size={20} />
-                        </button>
-                    </div>
-                    <div className="max-h-[500px] overflow-y-auto p-2 custom-scrollbar">
-                        {(() => {
-                            const comprasAtivas = data.compras.filter(compra => shouldShowCompra(compra));
-
-                            if (comprasAtivas.length === 0) {
-                                return (
-                                    <div className="p-12 text-center flex flex-col items-center gap-3 text-zinc-500">
-                                        <CreditCard size={48} strokeWidth={1} className="opacity-20" />
-                                        <p>Nenhuma compra ativa.</p>
-                                    </div>
-                                );
-                            }
-
-                            return (
-                                <div className="space-y-1">
-                                    {comprasAtivas.map(compra => {
-                                        const isOculta = compra.oculta || false;
-                                        const parcelaAtual = calculateParcelaAtual(compra);
-                                        
-                                        return (
-                                            <div key={compra.id} className={`p-4 rounded-xl flex items-center justify-between hover:bg-white/5 transition group border border-transparent hover:border-white/5 ${isOculta ? 'opacity-50' : ''}`}>
-                                                <div className="flex-1 min-w-0">
-                                                    <h4 className={`font-medium truncate flex items-center gap-2 ${isOculta ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
-                                                      {compra.item}
-                                                    </h4>
-                                                    <p className={`text-xs mt-1 flex items-center gap-2 ${isOculta ? 'text-zinc-600' : 'text-zinc-500'}`}>
-                                                        <span className="bg-white/5 px-1.5 py-0.5 rounded text-[10px]">{formatDate(compra.data)}</span>
-                                                        <span>{compra.parcelas}x de {formatDisplay(compra.valorTotal / compra.parcelas)}</span>
-                                                    </p>
-                                                </div>
-                                                <div className="flex items-center gap-4 ml-4">
-                                                    {!isOculta && parcelaAtual > 0 && parcelaAtual <= compra.parcelas && (
-                                                      <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-1 rounded-lg whitespace-nowrap" title="Parcela Atual">
-                                                        {parcelaAtual}/{compra.parcelas}
-                                                      </span>
-                                                    )}
-                                                    
-                                                    <span className={`text-sm font-bold whitespace-nowrap ${isOculta ? 'text-zinc-600' : 'text-white'}`}>{formatDisplay(compra.valorTotal)}</span>
-                                                    
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                      <button 
-                                                          onClick={() => {
-                                                              setData(prev => ({
-                                                                  ...prev,
-                                                                  compras: prev.compras.map(c => 
-                                                                      c.id === compra.id 
-                                                                          ? { ...c, oculta: !c.oculta }
-                                                                          : c
-                                                                  )
-                                                              }));
-                                                          }}
-                                                          className={`p-1.5 rounded-lg transition ${isOculta ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10'}`}
-                                                          title={isOculta ? "Mostrar compra" : "Ocultar compra"}
-                                                      >
-                                                          {isOculta ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                      </button>
-                                                      <button onClick={() => editCompra(compra)} className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 transition" title="Editar">
-                                                          <Edit size={16} />
-                                                      </button>
-                                                      <button onClick={() => removeItem(compra.id)} className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition" title="Remover">
-                                                          <Trash2 size={16} />
-                                                      </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            );
-                        })()}
-                    </div>
-                </div>
-
-                <div className="glass-panel rounded-2xl overflow-hidden flex flex-col">
-                    <div className="flex items-center justify-between p-5 border-b border-white/5 bg-white/[0.02]">
-                        <h3 className="text-lg font-bold text-white flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
-                              <TrendingUp size={20} />
-                            </div>
-                            Estornados
-                        </h3>
-                        <button
-                            onClick={() => {
-                                setEditingEstornoId(null);
-                                setModalType('estorno');
-                                setShowModal(true);
-                            }}
-                            className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-lg shadow-emerald-900/20"
-                            title="Adicionar Estorno"
-                        >
-                            <Plus size={20} />
-                        </button>
-                    </div>
-                    <div className="max-h-[500px] overflow-y-auto p-2 custom-scrollbar">
-                        {(() => {
-                            const estornosVisiveis = data.estornos.filter(e => !data.salariosRecebidos.includes(e.mes));
-                            
-                            if (estornosVisiveis.length === 0) {
-                                return (
-                                    <div className="p-12 text-center flex flex-col items-center gap-3 text-zinc-500">
-                                        <TrendingUp size={48} strokeWidth={1} className="opacity-20" />
-                                        <p>Nenhum estorno pendente.</p>
-                                    </div>
-                                );
-                            }
-
-                            return (
-                                <div className="space-y-1">
-                                    {estornosVisiveis.map(estorno => (
-                                        <div key={estorno.id} className="p-4 rounded-xl flex items-center justify-between hover:bg-white/5 transition group border border-transparent hover:border-white/5">
-                                            <div className="flex-1 min-w-0">
-                                                <h4 className="font-medium text-zinc-200 truncate">{estorno.nome}</h4>
-                                                <p className="text-xs text-zinc-500 mt-1 bg-white/5 inline-block px-1.5 py-0.5 rounded">
-                                                    Mês: {estorno.mes}
-                                                </p>
-                                            </div>
-                                            <div className="flex items-center gap-4 ml-4">
-                                                <span className="text-sm font-bold text-emerald-400 whitespace-nowrap">+{formatDisplay(estorno.valor)}</span>
-                                                
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                  <button onClick={() => editEstorno(estorno)} className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 transition" title="Editar">
-                                                      <Edit size={16} />
-                                                  </button>
-                                                  <button onClick={() => removeEstorno(estorno.id)} className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition" title="Remover">
-                                                      <Trash2 size={16} />
-                                                  </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            );
-                        })()}
-                    </div>
-                </div>
-
-                <div className="glass-panel rounded-2xl overflow-hidden flex flex-col">
-                    <div className="flex items-center justify-between p-5 border-b border-white/5 bg-white/[0.02]">
-                        <h3 className="text-lg font-bold text-white flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400">
-                              <Minus size={20} />
-                            </div>
-                            Despesas
-                        </h3>
-                        <button
-                            onClick={() => {
-                                setEditingDespesaId(null);
-                                setModalType('despesa');
-                                setShowModal(true);
-                            }}
-                            className="p-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition shadow-lg shadow-rose-900/20"
-                            title="Adicionar Despesa"
-                        >
-                            <Plus size={20} />
-                        </button>
-                    </div>
-                    <div className="max-h-[500px] overflow-y-auto p-2 custom-scrollbar">
-                        {(() => {
-                            const hoje = new Date();
-                            const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-                            
-                            const despesasAtivas = (data.despesas || []).filter(d => {
-                              if (d.vezesRestantes === null || d.vezesRestantes === undefined) {
-                                return true;
-                              }
-                              
-                              const vezesRestantesInicial = parseInt(d.vezesRestantes) || 0;
-                              
-                              if (d.dataInicio) {
-                                const [inicioAno, inicioMes] = d.dataInicio.split('-').map(Number);
-                                const inicioDate = new Date(inicioAno, inicioMes - 1, 1);
-                                
-                                if (mesAtual < inicioDate) {
-                                  return true;
-                                }
-                                
-                                const mesesPassados = (mesAtual.getFullYear() - inicioDate.getFullYear()) * 12 + 
-                                                      (mesAtual.getMonth() - inicioDate.getMonth());
-                                const vezesRestantesAgora = vezesRestantesInicial - mesesPassados;
-                                
-                                return vezesRestantesAgora > 0;
-                              }
-                              
-                              return vezesRestantesInicial > 0;
-                            });
-                            
-                            if (despesasAtivas.length === 0) {
-                                return (
-                                    <div className="p-12 text-center flex flex-col items-center gap-3 text-zinc-500">
-                                        <Minus size={48} strokeWidth={1} className="opacity-20" />
-                                        <p>Nenhuma despesa cadastrada.</p>
-                                    </div>
-                                );
-                            }
-
-                            return (
-                                <div className="space-y-1">
-                                    {despesasAtivas.map(despesa => {
-                                      const temLimite = despesa.vezesRestantes !== undefined && despesa.vezesRestantes !== null;
-                                      const vezesRestantesInicial = temLimite ? parseInt(despesa.vezesRestantes) : null;
-                                      
-                                      let vezesRestantesAgora = vezesRestantesInicial;
-                                      if (temLimite && despesa.dataInicio) {
-                                        const hoje = new Date();
-                                        const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-                                        const [inicioAno, inicioMes] = despesa.dataInicio.split('-').map(Number);
-                                        const inicioDate = new Date(inicioAno, inicioMes - 1, 1);
-                                        
-                                        if (mesAtual >= inicioDate) {
-                                          const mesesPassados = (mesAtual.getFullYear() - inicioDate.getFullYear()) * 12 + 
-                                                                (mesAtual.getMonth() - inicioDate.getMonth());
-                                          vezesRestantesAgora = vezesRestantesInicial - mesesPassados;
-                                        }
-                                      }
-                                      
-                                      const deveMostrar = !temLimite || (vezesRestantesAgora !== null && vezesRestantesAgora > 0);
-                                      
-                                      if (!deveMostrar) return null;
-                                      
-                                      const decrementarVezes = () => {
-                                        if (temLimite && vezesRestantesAgora > 0) {
-                                          const novasVezes = vezesRestantesAgora - 1;
-                                          if (novasVezes === 0) {
-                                            removeDespesa(despesa.id);
-                                          } else {
-                                            const hoje = new Date();
-                                            const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-                                            let vezesRestantesParaSalvar = novasVezes;
-                                            
-                                            if (despesa.dataInicio) {
-                                              const [inicioAno, inicioMes] = despesa.dataInicio.split('-').map(Number);
-                                              const inicioDate = new Date(inicioAno, inicioMes - 1, 1);
-                                              const mesesPassados = (mesAtual.getFullYear() - inicioDate.getFullYear()) * 12 + 
-                                                                    (mesAtual.getMonth() - inicioDate.getMonth());
-                                              vezesRestantesParaSalvar = novasVezes + mesesPassados;
-                                            }
-                                            
-                                            setData(prev => ({
-                                              ...prev,
-                                              despesas: prev.despesas.map(d => 
-                                                d.id === despesa.id 
-                                                  ? { ...d, vezesRestantes: vezesRestantesParaSalvar }
-                                                  : d
-                                              )
-                                            }));
-                                          }
-                                        }
-                                      };
-                                      
-                                      return (
-                                        <div key={despesa.id} className="p-4 rounded-xl flex items-center justify-between hover:bg-white/5 transition group border border-transparent hover:border-white/5">
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                                  <h4 className="font-medium text-zinc-200 truncate">{despesa.nome}</h4>
-                                                  {temLimite && vezesRestantesAgora !== null && vezesRestantesAgora > 0 && (
-                                                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 whitespace-nowrap">
-                                                      Falta {vezesRestantesAgora}x
-                                                    </span>
-                                                  )}
-                                                </div>
-                                                <div className="flex items-center gap-3 flex-wrap">
-                                                  <p className="text-xs text-zinc-500">
-                                                      {formatDisplay(despesa.valor)}/mês
-                                                  </p>
-                                                  {temLimite && despesa.dataInicio && (
-                                                    <span className="text-xs text-zinc-500">
-                                                      • Início: {formatDate(despesa.dataInicio)}
-                                                    </span>
-                                                  )}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2 ml-4">
-                                                {temLimite && vezesRestantesAgora !== null && vezesRestantesAgora > 0 && (
-                                                  <button 
-                                                    onClick={decrementarVezes}
-                                                    className="p-1.5 rounded-lg text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition opacity-0 group-hover:opacity-100 border border-transparent hover:border-emerald-500/30" 
-                                                    title="Marcar como pago (decrementar)"
-                                                  >
-                                                    <CheckCircle2 size={16} />
-                                                  </button>
-                                                )}
-                                                <button 
-                                                    onClick={() => editDespesa(despesa)} 
-                                                    className="p-1.5 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 transition opacity-0 group-hover:opacity-100" 
-                                                    title="Editar"
-                                                >
-                                                    <Edit size={16} />
-                                                </button>
-                                                <button 
-                                                    onClick={() => removeDespesa(despesa.id)} 
-                                                    className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition opacity-0 group-hover:opacity-100" 
-                                                    title="Remover"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                      );
-                                    })}
-                                </div>
-                            );
-                        })()}
-                    </div>
-                </div>
+        <section className="section-shell stagger-item">
+          <div className="section-header">
+            <div>
+              <span className="panel-kicker">Listas</span>
+              <h2 className="section-title">Operação</h2>
+              <p className="section-description">Lançamentos ativos e ajustes rápidos.</p>
             </div>
-        </section>
+          </div>
 
+          <div className="workspace-grid">
+            <div className="panel">
+              <div className="panel-head">
+                <div className="panel-title-wrap">
+                  <div className="panel-icon panel-icon--accent">
+                    <CreditCard size={20} />
+                  </div>
+                  <div>
+                    <h3 className="panel-title">Parcelados</h3>
+                    <p className="panel-subtitle">{comprasAtivas.length} ativos</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingCompraId(null);
+                    setModalType('compra');
+                    setShowModal(true);
+                  }}
+                  className="panel-add"
+                  title="Adicionar parcelado"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+
+              <div className="list-scroll custom-scrollbar">
+                {comprasAtivas.length === 0 ? (
+                  <div className="empty-state">
+                    <CreditCard size={44} strokeWidth={1.3} className="empty-state__icon" />
+                    <p>Nenhuma compra ativa no cartão.</p>
+                  </div>
+                ) : (
+                  <div className="list-stack">
+                    {comprasAtivas.map((compra) => {
+                      const isOculta = compra.oculta || false;
+                      const parcelaAtual = calculateParcelaAtual(compra);
+
+                      return (
+                        <div key={compra.id} className={`ledger-row ${isOculta ? 'ledger-row--muted' : ''}`}>
+                          <div className="ledger-row__main">
+                            <p className={`ledger-row__title ${isOculta ? 'ledger-row__title--muted' : ''}`}>{compra.item}</p>
+                            <div className="ledger-row__meta flex flex-wrap items-center gap-2">
+                              <span className="pill pill--muted">{formatDate(compra.data)}</span>
+                              <span>{compra.parcelas}x de {formatDisplay(compra.valorTotal / compra.parcelas)}</span>
+                              {!isOculta && parcelaAtual > 0 && parcelaAtual <= compra.parcelas && (
+                                <span className="pill pill--accent">{parcelaAtual}/{compra.parcelas}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className={`ledger-row__value ${isOculta ? '' : 'month-row__value--accent'}`}>{formatDisplay(compra.valorTotal)}</span>
+                            <div className="ledger-row__actions">
+                              <button
+                                onClick={() => {
+                                  setData((prev) => ({
+                                    ...prev,
+                                    compras: prev.compras.map((item) =>
+                                      item.id === compra.id ? { ...item, oculta: !item.oculta } : item
+                                    )
+                                  }));
+                                }}
+                                className="row-icon-button row-icon-button--neutral"
+                                title={isOculta ? 'Mostrar compra' : 'Ocultar compra'}
+                              >
+                                {isOculta ? <EyeOff size={15} /> : <Eye size={15} />}
+                              </button>
+                              <button onClick={() => editCompra(compra)} className="row-icon-button row-icon-button--accent" title="Editar">
+                                <Edit size={15} />
+                              </button>
+                              <button onClick={() => removeItem(compra.id)} className="row-icon-button row-icon-button--negative" title="Remover">
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-head">
+                <div className="panel-title-wrap">
+                  <div className="panel-icon panel-icon--positive">
+                    <TrendingUp size={20} />
+                  </div>
+                  <div>
+                    <h3 className="panel-title">Estornos</h3>
+                    <p className="panel-subtitle">{estornosPendentes.length} pendentes</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingEstornoId(null);
+                    setModalType('estorno');
+                    setShowModal(true);
+                  }}
+                  className="panel-add"
+                  title="Adicionar estorno"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+
+              <div className="list-scroll custom-scrollbar">
+                {estornosPendentes.length === 0 ? (
+                  <div className="empty-state">
+                    <TrendingUp size={44} strokeWidth={1.3} className="empty-state__icon" />
+                    <p>Nenhum estorno pendente.</p>
+                  </div>
+                ) : (
+                  <div className="list-stack">
+                    {estornosPendentes.map((estorno) => (
+                      <div key={estorno.id} className="ledger-row">
+                        <div className="ledger-row__main">
+                          <p className="ledger-row__title">{estorno.nome}</p>
+                          <div className="ledger-row__meta flex flex-wrap items-center gap-2">
+                            <span className="pill pill--muted">Mês {estorno.mes}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="ledger-row__value ledger-row__value--positive">+{formatDisplay(estorno.valor)}</span>
+                          <div className="ledger-row__actions">
+                            <button onClick={() => editEstorno(estorno)} className="row-icon-button row-icon-button--accent" title="Editar">
+                              <Edit size={15} />
+                            </button>
+                            <button onClick={() => removeEstorno(estorno.id)} className="row-icon-button row-icon-button--negative" title="Remover">
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-head">
+                <div className="panel-title-wrap">
+                  <div className="panel-icon panel-icon--negative">
+                    <Minus size={20} />
+                  </div>
+                  <div>
+                    <h3 className="panel-title">Despesas</h3>
+                    <p className="panel-subtitle">{despesasAtivas.length} ativas</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingDespesaId(null);
+                    setModalType('despesa');
+                    setShowModal(true);
+                  }}
+                  className="panel-add"
+                  title="Adicionar despesa"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+
+              <div className="list-scroll custom-scrollbar">
+                {despesasAtivas.length === 0 ? (
+                  <div className="empty-state">
+                    <Minus size={44} strokeWidth={1.3} className="empty-state__icon" />
+                    <p>Nenhuma despesa cadastrada.</p>
+                  </div>
+                ) : (
+                  <div className="list-stack">
+                    {despesasAtivas.map((despesa) => {
+                      const temLimite = despesa.vezesRestantes !== undefined && despesa.vezesRestantes !== null;
+                      const vezesRestantesInicial = temLimite ? parseInt(despesa.vezesRestantes) : null;
+
+                      let vezesRestantesAgora = vezesRestantesInicial;
+                      if (temLimite && despesa.dataInicio) {
+                        const [inicioAno, inicioMes] = despesa.dataInicio.split('-').map(Number);
+                        const inicioDate = new Date(inicioAno, inicioMes - 1, 1);
+
+                        if (inicioMesAtual >= inicioDate) {
+                          const mesesPassados =
+                            (inicioMesAtual.getFullYear() - inicioDate.getFullYear()) * 12 +
+                            (inicioMesAtual.getMonth() - inicioDate.getMonth());
+
+                          vezesRestantesAgora = vezesRestantesInicial - mesesPassados;
+                        }
+                      }
+
+                      const deveMostrar = !temLimite || (vezesRestantesAgora !== null && vezesRestantesAgora > 0);
+
+                      if (!deveMostrar) return null;
+
+                      const decrementarVezes = () => {
+                        if (temLimite && vezesRestantesAgora > 0) {
+                          const novasVezes = vezesRestantesAgora - 1;
+                          if (novasVezes === 0) {
+                            removeDespesa(despesa.id);
+                          } else {
+                            let vezesRestantesParaSalvar = novasVezes;
+
+                            if (despesa.dataInicio) {
+                              const [inicioAno, inicioMes] = despesa.dataInicio.split('-').map(Number);
+                              const inicioDate = new Date(inicioAno, inicioMes - 1, 1);
+                              const mesesPassados =
+                                (inicioMesAtual.getFullYear() - inicioDate.getFullYear()) * 12 +
+                                (inicioMesAtual.getMonth() - inicioDate.getMonth());
+
+                              vezesRestantesParaSalvar = novasVezes + mesesPassados;
+                            }
+
+                            setData((prev) => ({
+                              ...prev,
+                              despesas: prev.despesas.map((item) =>
+                                item.id === despesa.id ? { ...item, vezesRestantes: vezesRestantesParaSalvar } : item
+                              )
+                            }));
+                          }
+                        }
+                      };
+
+                      return (
+                        <div key={despesa.id} className="ledger-row">
+                          <div className="ledger-row__main">
+                            <p className="ledger-row__title">{despesa.nome}</p>
+                            <div className="ledger-row__meta flex flex-wrap items-center gap-2">
+                              <span>{formatDisplay(despesa.valor)}/mês</span>
+                              {temLimite && vezesRestantesAgora !== null && vezesRestantesAgora > 0 && (
+                                <span className="pill pill--accent">Falta {vezesRestantesAgora}x</span>
+                              )}
+                              {temLimite && despesa.dataInicio && (
+                                <span className="pill pill--muted">Início {formatDate(despesa.dataInicio)}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className="ledger-row__value ledger-row__value--negative">{formatDisplay(despesa.valor)}</span>
+                            <div className="ledger-row__actions">
+                              {temLimite && vezesRestantesAgora !== null && vezesRestantesAgora > 0 && (
+                                <button onClick={decrementarVezes} className="row-icon-button row-icon-button--positive" title="Marcar como pago">
+                                  <CheckCircle2 size={15} />
+                                </button>
+                              )}
+                              <button onClick={() => editDespesa(despesa)} className="row-icon-button row-icon-button--accent" title="Editar">
+                                <Edit size={15} />
+                              </button>
+                              <button onClick={() => removeDespesa(despesa.id)} className="row-icon-button row-icon-button--negative" title="Remover">
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
   );
