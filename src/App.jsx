@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   CreditCard, 
   Calendar, 
@@ -22,6 +22,7 @@ import Modal from './components/Modal';
 import ChatInterface from './components/ChatInterface';
 import ModalDetalhesMes from './components/ModalDetalhesMes';
 import { formatCurrencyInput, parseCurrencyInput } from './utils/currency';
+import { installSyncVault, notifySyncDataChange } from './utils/syncVault';
 
 export default function FinancialPlanner() {
   const getInitialState = () => {
@@ -145,9 +146,22 @@ export default function FinancialPlanner() {
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [editandoLimiteAlerta, setEditandoLimiteAlerta] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ show: false, message: '', onConfirm: null, type: 'confirm' });
+  const dataRef = useRef(data);
+  const didPersistInitialData = useRef(false);
   const [hideValues, setHideValues] = useState(() => {
     return localStorage.getItem('assistenteFinanceiroHideValues') === 'true';
   });
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
+    return installSyncVault({
+      getData: () => dataRef.current,
+      setData,
+    });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('assistenteFinanceiroHideValues', String(hideValues));
@@ -156,6 +170,11 @@ export default function FinancialPlanner() {
   useEffect(() => {
     try {
       localStorage.setItem('assistenteFinanceiroData', JSON.stringify(data));
+      if (didPersistInitialData.current) {
+        notifySyncDataChange(data);
+      } else {
+        didPersistInitialData.current = true;
+      }
     } catch {}
   }, [data]);
 
