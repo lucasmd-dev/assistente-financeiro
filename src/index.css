@@ -213,7 +213,8 @@
 @layer components {
   .app-shell {
     min-height: 100vh;
-    padding-bottom: var(--space-12);
+    min-height: 100dvh;
+    padding-bottom: calc(var(--space-12) + env(safe-area-inset-bottom));
   }
 
   .dashboard-shell {
@@ -230,6 +231,7 @@
     top: 0;
     z-index: 40;
     isolation: isolate;
+    padding-top: env(safe-area-inset-top);
     border-bottom: 1px solid var(--line-soft);
     background:
       radial-gradient(circle at 8% 0%, rgba(243, 163, 92, 0.1), transparent 30%),

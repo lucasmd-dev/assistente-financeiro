@@ -1,0 +1,37 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="cool" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(134 118) rotate(51) scale(338)">
+      <stop stop-color="#8AC8D8" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#8AC8D8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="warm" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(390 150) rotate(117) scale(340)">
+      <stop stop-color="#F3A35C" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#F3A35C" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="card" x1="119" y1="98" x2="390" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1B242E"/>
+      <stop offset="1" stop-color="#0D1218"/>
+    </linearGradient>
+    <linearGradient id="line" x1="132" y1="324" x2="379" y2="191" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8AC8D8"/>
+      <stop offset="0.55" stop-color="#FFC07D"/>
+      <stop offset="1" stop-color="#F3A35C"/>
+    </linearGradient>
+    <filter id="shadow" x="61" y="62" width="390" height="407" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000000" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0A0D12"/>
+  <rect width="512" height="512" rx="112" fill="url(#cool)"/>
+  <rect width="512" height="512" rx="112" fill="url(#warm)"/>
+  <path d="M96 164C96 128.654 124.654 100 160 100H352C387.346 100 416 128.654 416 164V348C416 383.346 387.346 412 352 412H160C124.654 412 96 383.346 96 348V164Z" fill="url(#card)" filter="url(#shadow)"/>
+  <path d="M160 100H352C387.346 100 416 128.654 416 164V348C416 383.346 387.346 412 352 412H160C124.654 412 96 383.346 96 348V164C96 128.654 124.654 100 160 100Z" stroke="#F3A35C" stroke-opacity="0.42" stroke-width="12"/>
+  <path d="M151 321L212 265L262 292L355 204" stroke="url(#line)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M332 202H357V227" stroke="#FFC07D" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="151" cy="321" r="20" fill="#8AC8D8"/>
+  <circle cx="262" cy="292" r="17" fill="#FFC07D"/>
+  <rect x="142" y="154" width="52" height="18" rx="9" fill="#8AC8D8" fill-opacity="0.72"/>
+  <rect x="142" y="366" width="180" height="18" rx="9" fill="#EEF4F7" fill-opacity="0.16"/>
+  <rect x="142" y="195" width="228" height="13" rx="6.5" fill="#EEF4F7" fill-opacity="0.09"/>
+  <rect x="142" y="231" width="144" height="13" rx="6.5" fill="#EEF4F7" fill-opacity="0.08"/>
+</svg>
