@@ -1,0 +1,202 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+/* Dark mode por classe (aplicada estaticamente no <html class="dark">). */
+@custom-variant dark (&:is(.dark *));
+
+/* ---- Tokens do tema "Aurora Glass HUD" -------------------------------- */
+@theme {
+  /* Paleta viva (OKLCH) — geram utilitarios de cor (bg, text, border, fill) */
+  --color-ink: #06070f;
+  --color-ink-2: #0a0c1a;
+  --color-violet: oklch(0.64 0.25 286); /* accent IA / CTA */
+  --color-violet-soft: oklch(0.7 0.18 286);
+  --color-cyan: oklch(0.82 0.15 210);
+  --color-positive: oklch(0.82 0.17 160); /* sobra / dinheiro */
+  --color-negative: oklch(0.68 0.25 14); /* despesa / saldo negativo */
+  --color-warn: oklch(0.85 0.16 82); /* mês em atenção */
+  --color-edge: oklch(1 0 0 / 0.08); /* bordas de vidro */
+  --color-edge-strong: oklch(1 0 0 / 0.14);
+
+  --radius-card: 1.25rem;
+  --radius-pill: 999px;
+
+  --shadow-glow-violet: 0 18px 60px -22px oklch(0.64 0.25 286 / 0.7);
+  --shadow-glow-positive: 0 18px 60px -22px oklch(0.82 0.17 160 / 0.6);
+  --shadow-glow-negative: 0 18px 60px -22px oklch(0.68 0.25 14 / 0.6);
+  --shadow-glass: 0 24px 70px -30px rgba(0, 0, 0, 0.85);
+
+  --animate-aurora: aurora 22s ease-in-out infinite alternate;
+  --animate-float: float 9s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.4s linear infinite;
+}
+
+/* Fontes do next/font (variáveis injetadas no <html>). */
+@theme inline {
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), var(--font-body), sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+}
+
+/* Harmoniza tokens da HeroUI v3 com a identidade (accent = violeta elétrico). */
+.dark {
+  --accent: oklch(0.64 0.25 286);
+  --accent-foreground: oklch(0.99 0 0);
+  --accent-hover: oklch(0.6 0.25 286);
+}
+
+/* ---- Base ------------------------------------------------------------- */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background-color: var(--color-ink);
+    color: oklch(0.97 0.01 270);
+    font-family: var(--font-sans);
+    min-height: 100dvh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Mesh aurora fixo de fundo + grão sutil. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background:
+      radial-gradient(60rem 40rem at 12% -8%, oklch(0.64 0.25 286 / 0.28), transparent 60%),
+      radial-gradient(48rem 36rem at 102% 8%, oklch(0.82 0.15 210 / 0.2), transparent 60%),
+      radial-gradient(52rem 40rem at 78% 108%, oklch(0.82 0.17 160 / 0.16), transparent 60%),
+      radial-gradient(40rem 30rem at 8% 112%, oklch(0.68 0.25 14 / 0.14), transparent 60%);
+    filter: saturate(1.15);
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  ::selection {
+    background: oklch(0.64 0.25 286 / 0.4);
+    color: white;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(1 0 0 / 0.16) transparent;
+  }
+}
+
+/* ---- Utilitários custom ---------------------------------------------- */
+@layer utilities {
+  .glass {
+    background: linear-gradient(155deg, oklch(1 0 0 / 0.07), oklch(1 0 0 / 0.02));
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    border: 1px solid var(--color-edge);
+  }
+
+  .glass-strong {
+    background: linear-gradient(155deg, oklch(0.14 0.02 275 / 0.92), oklch(0.1 0.02 275 / 0.82));
+    backdrop-filter: blur(28px) saturate(1.3);
+    -webkit-backdrop-filter: blur(28px) saturate(1.3);
+    border: 1px solid var(--color-edge-strong);
+  }
+
+  /* Brilho na borda superior, como um HUD. */
+  .edge-light {
+    position: relative;
+  }
+  .edge-light::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(140deg, oklch(1 0 0 / 0.25), transparent 35%, transparent 65%, oklch(1 0 0 / 0.08));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .text-glow {
+    text-shadow: 0 0 24px currentColor;
+  }
+
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: oklch(1 0 0 / 0.14);
+    border-radius: 999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.64 0.25 286 / 0.5);
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* ---- Keyframes -------------------------------------------------------- */
+@keyframes aurora {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate3d(2%, -2%, 0) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(-2%, 2%, 0) scale(1.04);
+    opacity: 0.9;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
