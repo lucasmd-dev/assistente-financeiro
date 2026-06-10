@@ -16,11 +16,13 @@ import {
   CheckCircle2,
   Circle,
   Eye,
-  EyeOff
+  EyeOff,
+  ListChecks
 } from 'lucide-react';
 import Modal from './components/Modal';
 import ChatInterface from './components/ChatInterface';
 import ModalDetalhesMes from './components/ModalDetalhesMes';
+import ContasPagarModal from './components/ContasPagarModal';
 import { formatCurrencyInput, parseCurrencyInput } from './utils/currency';
 import { installSyncVault, notifySyncDataChange } from './utils/syncVault';
 
@@ -42,6 +44,8 @@ export default function FinancialPlanner() {
         if (!parsed.estornos) parsed.estornos = [];
         if (!parsed.salariosRecebidos) parsed.salariosRecebidos = [];
         if (!parsed.entradasExtras) parsed.entradasExtras = [];
+        if (!parsed.contasFixas) parsed.contasFixas = [];
+        if (!parsed.contasPagas) parsed.contasPagas = [];
         if (!parsed.despesas) parsed.despesas = [];
         if (!parsed.despesasExtras) parsed.despesasExtras = [];
         if (parsed.despesas && Array.isArray(parsed.despesas)) {
@@ -125,6 +129,8 @@ export default function FinancialPlanner() {
       entradasExtras: [],
       despesas: [],
       despesasExtras: [],
+      contasFixas: [],
+      contasPagas: [],
       limiteAlertaMensal: 500,
       apiKey: '',
       chats: [chatInicial],
@@ -151,6 +157,7 @@ export default function FinancialPlanner() {
   const [hideValues, setHideValues] = useState(() => {
     return localStorage.getItem('assistenteFinanceiroHideValues') === 'true';
   });
+  const [showContasPagar, setShowContasPagar] = useState(false);
 
   useEffect(() => {
     dataRef.current = data;
@@ -234,6 +241,8 @@ export default function FinancialPlanner() {
         despesas: Array.isArray(data.despesas) ? data.despesas : [],
         despesasExtras: Array.isArray(data.despesasExtras) ? data.despesasExtras : [],
         salariosRecebidos: Array.isArray(data.salariosRecebidos) ? data.salariosRecebidos : [],
+        contasFixas: Array.isArray(data.contasFixas) ? data.contasFixas : [],
+        contasPagas: Array.isArray(data.contasPagas) ? data.contasPagas : [],
         limiteAlertaMensal:
           data.limiteAlertaMensal !== undefined && data.limiteAlertaMensal !== null
             ? parseFloat(data.limiteAlertaMensal) || 0
@@ -315,13 +324,22 @@ export default function FinancialPlanner() {
         if (!Array.isArray(restoredData.despesas)) restoredData.despesas = [];
         if (!Array.isArray(restoredData.despesasExtras)) restoredData.despesasExtras = [];
         if (!Array.isArray(restoredData.salariosRecebidos)) restoredData.salariosRecebidos = [];
-        
+        if (!Array.isArray(restoredData.contasFixas)) restoredData.contasFixas = [];
+        if (!Array.isArray(restoredData.contasPagas)) restoredData.contasPagas = [];
+
         let idCounter = Date.now();
         const generateUniqueId = () => {
           idCounter++;
           return idCounter;
         };
         
+        restoredData.contasFixas = restoredData.contasFixas.map(c => ({
+          id: c.id || generateUniqueId(),
+          nome: c.nome || 'Conta sem nome',
+          valor: parseFloat(c.valor) || 0
+        }));
+        restoredData.contasPagas = restoredData.contasPagas.filter(id => typeof id === 'string');
+
         restoredData.compras = restoredData.compras.map(c => ({
           id: c.id || generateUniqueId(),
           item: c.item || 'Item sem nome',
@@ -422,6 +440,8 @@ export default function FinancialPlanner() {
           despesas: restoredData.despesas,
           despesasExtras: restoredData.despesasExtras,
           salariosRecebidos: restoredData.salariosRecebidos,
+          contasFixas: restoredData.contasFixas,
+          contasPagas: restoredData.contasPagas,
           limiteAlertaMensal: restoredData.limiteAlertaMensal,
           apiKey: restoredData.apiKey,
           chats: restoredData.chats,
@@ -942,6 +962,8 @@ export default function FinancialPlanner() {
         entradasExtras: [],
         despesas: [],
         despesasExtras: [],
+        contasFixas: [],
+        contasPagas: [],
         salariosRecebidos: [],
         limiteAlertaMensal: 500,
         apiKey: data.apiKey || '',
@@ -1256,6 +1278,14 @@ export default function FinancialPlanner() {
         />
       )}
 
+      <ContasPagarModal
+        showModal={showContasPagar}
+        setShowModal={setShowContasPagar}
+        data={data}
+        setData={setData}
+        formatCurrency={formatCurrency}
+      />
+
       <ModalDetalhesMes
         showModal={mesDetalhado !== null}
         setShowModal={(show) => !show && setMesDetalhado(null)}
@@ -1454,6 +1484,16 @@ export default function FinancialPlanner() {
                   </div>
                   <Sparkles size={18} />
                 </button>
+                <button
+                  onClick={() => setShowContasPagar(true)}
+                  className="quick-action quick-action--ghost"
+                >
+                  <div className="quick-action__copy">
+                    <span className="quick-action__title">Contas</span>
+                    <span className="quick-action__text">Checar pagamentos</span>
+                  </div>
+                  <ListChecks size={18} />
+                </button>
               </div>
             </div>
 
@@ -1605,7 +1645,8 @@ export default function FinancialPlanner() {
                   return {
                     ...prev,
                     salariosRecebidos: novosSalariosRecebidos,
-                    saldoAtual: novoSaldoAtual
+                    saldoAtual: novoSaldoAtual,
+                    contasPagas: []
                   };
                 });
               };

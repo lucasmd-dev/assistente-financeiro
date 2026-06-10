@@ -2430,4 +2430,8 @@
     padding-left: var(--space-3);
     padding-right: var(--space-3);
   }
+
+  .contas-pagar-list .ledger-row__actions {
+    opacity: 1;
+  }
 }
