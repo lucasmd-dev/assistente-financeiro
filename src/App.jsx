@@ -17,12 +17,14 @@ import {
   Circle,
   Eye,
   EyeOff,
-  ListChecks
+  ListChecks,
+  Calculator
 } from 'lucide-react';
 import Modal from './components/Modal';
 import ChatInterface from './components/ChatInterface';
 import ModalDetalhesMes from './components/ModalDetalhesMes';
 import ContasPagarModal from './components/ContasPagarModal';
+import CalculadoraMensalModal from './components/CalculadoraMensalModal';
 import { formatCurrencyInput, parseCurrencyInput } from './utils/currency';
 import { installSyncVault, notifySyncDataChange } from './utils/syncVault';
 
@@ -158,6 +160,7 @@ export default function FinancialPlanner() {
     return localStorage.getItem('assistenteFinanceiroHideValues') === 'true';
   });
   const [showContasPagar, setShowContasPagar] = useState(false);
+  const [showCalculadora, setShowCalculadora] = useState(false);
 
   useEffect(() => {
     dataRef.current = data;
@@ -1286,6 +1289,10 @@ export default function FinancialPlanner() {
         formatCurrency={formatCurrency}
       />
 
+      {showCalculadora && (
+        <CalculadoraMensalModal setShowModal={setShowCalculadora} />
+      )}
+
       <ModalDetalhesMes
         showModal={mesDetalhado !== null}
         setShowModal={(show) => !show && setMesDetalhado(null)}
@@ -1493,6 +1500,16 @@ export default function FinancialPlanner() {
                     <span className="quick-action__text">Checar pagamentos</span>
                   </div>
                   <ListChecks size={18} />
+                </button>
+                <button
+                  onClick={() => setShowCalculadora(true)}
+                  className="quick-action quick-action--ghost"
+                >
+                  <div className="quick-action__copy">
+                    <span className="quick-action__title">Calculadora</span>
+                    <span className="quick-action__text">Rascunho mensal</span>
+                  </div>
+                  <Calculator size={18} />
                 </button>
               </div>
             </div>
